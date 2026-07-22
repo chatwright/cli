@@ -13,7 +13,7 @@ func TestRunVersion(t *testing.T) {
 	if code := run([]string{"version"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("run(version) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got := stdout.String(); got != "chatwright "+version+"\n" {
+	if got := stdout.String(); got != "chatwright "+cliVersion()+"\n" {
 		t.Fatalf("run(version) stdout = %q", got)
 	}
 }

@@ -6,9 +6,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 )
 
-const version = "0.1.0-dev"
+// fallbackVersion is used when build info carries no module version
+// (e.g. a plain `go build` inside the repo).
+const fallbackVersion = "devel"
+
+func cliVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return fallbackVersion
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -25,7 +35,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	case "version", "--version":
-		_, _ = fmt.Fprintf(stdout, "chatwright %s\n", version)
+		_, _ = fmt.Fprintf(stdout, "chatwright %s\n", cliVersion())
 		return 0
 	case "platforms":
 		_, _ = fmt.Fprintln(stdout, "telegram\ttext, inline actions, edits")
