@@ -31,7 +31,7 @@ const resultsFileName = "results.json"
 
 func runArena(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "chatwright arena: missing subcommand (run|report)")
+		_, _ = fmt.Fprintln(stderr, "chatwright arena: missing subcommand (run|report)")
 		printArenaUsage(stderr)
 		return 2
 	}
@@ -44,14 +44,14 @@ func runArena(args []string, stdout, stderr io.Writer) int {
 		printArenaUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "chatwright arena: unknown subcommand %q\n\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "chatwright arena: unknown subcommand %q\n\n", args[0])
 		printArenaUsage(stderr)
 		return 2
 	}
 }
 
 func printArenaUsage(w io.Writer) {
-	fmt.Fprintln(w, `Run and report on the actor-model arena (see chatwright.dev/runtime/arena).
+	_, _ = fmt.Fprintln(w, `Run and report on the actor-model arena (see chatwright.dev/runtime/arena).
 
 Usage:
   chatwright arena run --config arena.yaml --out DIR
@@ -74,34 +74,34 @@ func runArenaRun(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *configPath == "" || *outDir == "" {
-		fmt.Fprintln(stderr, "chatwright arena run: --config and --out are both required")
+		_, _ = fmt.Fprintln(stderr, "chatwright arena run: --config and --out are both required")
 		fs.Usage()
 		return 2
 	}
 
 	cfg, err := loadArenaConfig(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
 	matrix, opts, err := cfg.toMatrix()
 	if err != nil {
-		fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
 
 	results, err := arena.Run(context.Background(), matrix, opts)
 	if err != nil {
-		fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
 
 	if err := writeArenaOutputs(*outDir, results); err != nil {
-		fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "wrote %s (bundles/, report.md, %s)\n", *outDir, resultsFileName)
+	_, _ = fmt.Fprintf(stdout, "wrote %s (bundles/, report.md, %s)\n", *outDir, resultsFileName)
 	return 0
 }
 
@@ -118,38 +118,38 @@ func runArenaReport(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *dir == "" {
-		fmt.Fprintln(stderr, "chatwright arena report: --dir is required")
+		_, _ = fmt.Fprintln(stderr, "chatwright arena report: --dir is required")
 		fs.Usage()
 		return 2
 	}
 
 	results, warnings, err := readArenaResults(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
 		return 1
 	}
 	for _, w := range warnings {
-		fmt.Fprintf(stderr, "chatwright arena report: warning: %s\n", w)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena report: warning: %s\n", w)
 	}
 
 	reportPath := filepath.Join(*dir, "report.md")
 	f, err := os.Create(reportPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
 		return 1
 	}
 	writeErr := arena.WriteReport(f, results)
 	closeErr := f.Close()
 	if writeErr != nil {
-		fmt.Fprintf(stderr, "chatwright arena report: %v\n", writeErr)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", writeErr)
 		return 1
 	}
 	if closeErr != nil {
-		fmt.Fprintf(stderr, "chatwright arena report: %v\n", closeErr)
+		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", closeErr)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "wrote %s\n", reportPath)
+	_, _ = fmt.Fprintf(stdout, "wrote %s\n", reportPath)
 	return 0
 }
 
