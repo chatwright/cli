@@ -3,8 +3,8 @@ module chatwright.dev/cli
 go 1.26.1
 
 require (
-	chatwright.dev/runtime v0.1.1
-	chatwright.dev/sdk v0.1.0
+	chatwright.dev/runtime v0.2.0
+	chatwright.dev/sdk v0.1.1
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 )
 
