@@ -1,0 +1,63 @@
+# Example config for `chatwright arena run --config arena.yaml --out DIR`.
+#
+# This documents the founder's own local line-up (spec/ideas/
+# actor-model-arena.md's MVP scope, chatwright/chatwright repository):
+# Ollama qwen3.6, plus three LM Studio models. Copy this file, adjust the
+# baseUrl/model/contextLength values for your own machine, and run:
+#
+#   chatwright arena run --config arena.yaml --out ./arena-run
+#   chatwright arena report --dir ./arena-run   # recompute report.md later
+#
+# See chatwright.dev/runtime/arena's own package doc comment for what each
+# field does; this file only sets the ones a real run needs.
+
+scenario: greetbot-language-onboarding # the only built-in scenario today
+repeats: 3 # spec's MVP scope: N >= 3 repeats per model
+
+# Free-text label for the report's environment block — never inferred,
+# always the founder's own declared hardware (spec's right-sizing rule:
+# "entries carry a declared hardware/environment block").
+hardware: "Apple M5 Max, 36GB unified memory"
+
+budgets:
+  maxSteps: 12
+  maxDuration: 4m
+  # maxRepeatedFailures: 3   # 0 (unset) means goal.NonProgressLimit's own
+  #                            actor-loop default (3) still applies —
+  #                            Budgets.MaxRepeatedFailures is a separate,
+  #                            optional campaign-level cap.
+
+providers:
+  # Ollama, native API right-sizing (num_ctx pre-load) — see
+  # chatwright.dev/runtime/arena.OllamaLoader. Actor proposals run ~1k
+  # tokens per call; 8192 covers a full history window with headroom
+  # without the wasted KV-cache memory an unsized 116k-token default
+  # allocates (the founder's own first-run observation).
+  - kind: ollama
+    label: ollama/qwen3.6
+    baseUrl: http://localhost:11434/v1
+    model: qwen3.6:latest
+    contextLength: 8192
+
+  # LM Studio, `lms load --context-length` right-sizing — see
+  # chatwright.dev/runtime/arena.LMStudioLoader. Each LM Studio entry is
+  # loaded in its own per-model block (evict-others hook first): the
+  # 26B/27B entries below cannot cohabit with each other or with the 4B on
+  # a 36GB machine, so LM Studio serially evicts between blocks.
+  - kind: lmstudio
+    label: lmstudio/gemma-4-e4b
+    baseUrl: http://localhost:1234/v1
+    model: google/gemma-4-e4b
+    contextLength: 8192
+
+  - kind: lmstudio
+    label: lmstudio/gemma-4-26b-a4b-qat
+    baseUrl: http://localhost:1234/v1
+    model: google/gemma-4-26b-a4b-qat
+    contextLength: 8192
+
+  - kind: lmstudio
+    label: lmstudio/qwen3.6-27b
+    baseUrl: http://localhost:1234/v1
+    model: qwen/qwen3.6-27b
+    contextLength: 8192

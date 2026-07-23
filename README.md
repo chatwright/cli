@@ -44,6 +44,7 @@ chatwright <command>
 
 Commands:
   platforms   List built-in messaging platform emulators
+  arena       Run and report on the actor-model arena (chatwright arena help)
   version     Print the CLI, runtime and sdk versions
   help        Show this help
 ```
@@ -51,6 +52,24 @@ Commands:
 `chatwright version` reports the CLI's own version plus the resolved
 sdk/runtime module versions it was built against, and the supported
 run-bundle format id.
+
+### Actor-model arena
+
+Compares actor models (Ollama, LM Studio, any OpenAI-compatible endpoint)
+on the same Chatwright scenario — see
+[`chatwright.dev/runtime/arena`](https://github.com/chatwright/runtime-go)
+and [spec/ideas/actor-model-arena.md](https://github.com/chatwright/chatwright/blob/main/spec/ideas/actor-model-arena.md)
+in the standard repository:
+
+```sh
+chatwright arena run --config arena.yaml --out ./arena-run
+chatwright arena report --dir ./arena-run   # recompute report.md later, no re-run
+```
+
+`arena run` writes `bundles/` (one replayable run-bundle per cell),
+`report.md` (the comparison table) and `results.json` (machine-readable) into
+`--out`. See [`arena.example.yaml`](arena.example.yaml) for a documented
+starting config.
 
 ## The Chatwright repositories
 
