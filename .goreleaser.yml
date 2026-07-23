@@ -1,0 +1,80 @@
+version: 2
+
+project_name: chatwright
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: chatwright
+    main: ./cmd/chatwright
+    binary: chatwright
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+archives:
+  - id: chatwright
+    ids:
+      - chatwright
+    name_template: "chatwright_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    formats: [tar.gz]
+
+checksum:
+  name_template: "chatwright_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+# Homebrew cask — the ecosystem standard (strongo/cicd README "Packaging
+# conventions": casks, not the deprecated `brews:` formulas, because we ship
+# prebuilt binaries). Install with:
+#   brew install --cask chatwright/tap/chatwright
+# (the tap-qualified `brew install chatwright/tap/chatwright` also resolves).
+#
+# The cask manifest is pushed to chatwright/homebrew-tap under
+# Casks/chatwright.rb. Uses $GORELEASER_GITHUB_TOKEN, which the shared
+# strongo/cicd release workflow forwards from this repo's
+# CHATWRIGHT_GORELEASER_GITHUB_TOKEN secret (a classic PAT with public_repo
+# scope — the default GITHUB_TOKEN cannot push to another repository).
+#
+# The canonical install remains the chatwright.dev install script
+# (`curl -fsSL https://chatwright.dev/install.sh | sh`); the cask is the
+# Homebrew-native alternative on macOS. Linux users use the script or
+# `go install chatwright.dev/cli/cmd/chatwright@latest`.
+homebrew_casks:
+  - name: chatwright
+    ids:
+      - chatwright
+    description: "Chatwright CLI — deterministic and AI-driven testing for conversational applications."
+    homepage: https://chatwright.dev
+    license: Apache-2.0
+    repository:
+      owner: chatwright
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.GORELEASER_GITHUB_TOKEN }}"

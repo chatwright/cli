@@ -1,0 +1,37 @@
+name: Release
+
+# Deliberate, human-gated releases (docs/release-process.md in the
+# chatwright/chatwright repository): a maintainer pushes an annotated
+# `vX.Y.Z` tag and the shared strongo/cicd release workflow runs GoReleaser
+# for exactly that version (the shared workflow skips its auto-bump step on a
+# tag ref). There is deliberately no push-to-main trigger — Chatwright
+# releases are not continuous delivery pre-1.0.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: strongo/cicd/.github/workflows/release.yml@v1
+    permissions:
+      contents: write
+    with:
+      # Pre-1.0 (docs/release-process.md "Version policy"): never auto-bump
+      # to a new major. A tag push fixes the version anyway, so this is a
+      # belt-and-braces default, same as ci.yml's.
+      allow_major_version_bump: false
+    secrets:
+      # Cross-repo PAT (classic, public_repo scope) for pushing the Homebrew
+      # cask manifest to chatwright/homebrew-tap. Forwarded to GoReleaser as
+      # $GORELEASER_GITHUB_TOKEN and referenced by .goreleaser.yml.
+      GORELEASER_GITHUB_TOKEN: ${{ secrets.CHATWRIGHT_GORELEASER_GITHUB_TOKEN }}
