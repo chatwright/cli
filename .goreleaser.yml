@@ -70,6 +70,13 @@ homebrew_casks:
   - name: chatwright
     ids:
       - chatwright
+    # Skip publishing the cask when the cross-repo PAT is absent (the shared
+    # workflow forwards an empty env in that case): the release itself —
+    # binaries + checksums, which the canonical install script consumes —
+    # must never be blocked on the tap credential. Setting the
+    # CHATWRIGHT_GORELEASER_GITHUB_TOKEN secret activates the cask on the
+    # next release with no config change.
+    skip_upload: '{{ if eq (envOrDefault "GORELEASER_GITHUB_TOKEN" "") "" }}true{{ else }}false{{ end }}'
     description: "Chatwright CLI — deterministic and AI-driven testing for conversational applications."
     homepage: https://chatwright.dev
     license: Apache-2.0
