@@ -235,3 +235,61 @@ func TestProxyRejectsNonPOST(t *testing.T) {
 		t.Fatalf("status = %d, want 405", resp.StatusCode)
 	}
 }
+
+// TestProxyStripsBrowserOriginHeaders is the regression guard for the bug
+// where the browser's Origin header was forwarded to the upstream model
+// server: Ollama enforces its own CORS allowlist and answered 403 to a
+// request carrying an unrecognised Origin, so a real in-browser Local AI run
+// failed even though the proxy itself allowed the origin. The proxy must
+// strip Origin (and the other browser-only fetch-metadata headers) before
+// calling the upstream, while still forwarding Authorization.
+func TestProxyStripsBrowserOriginHeaders(t *testing.T) {
+	var gotOrigin, gotCookie, gotSecFetch, gotAuth string
+	fakeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotOrigin = r.Header.Get("Origin")
+		gotCookie = r.Header.Get("Cookie")
+		gotSecFetch = r.Header.Get("Sec-Fetch-Site")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"model":"llama3.2","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer fakeUpstream.Close()
+
+	srv := newProxyTestServer(t, fakeUpstream)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/v1/chat/completions",
+		bytes.NewBufferString(`{"model":"llama3.2","messages":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://chatwright.localhost:4200")
+	req.Header.Set("Cookie", "session=secret")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Authorization", "Bearer keep-me")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a forwarded Origin would make Ollama 403)", resp.StatusCode)
+	}
+	if gotOrigin != "" {
+		t.Fatalf("upstream saw Origin = %q, want it stripped", gotOrigin)
+	}
+	if gotCookie != "" {
+		t.Fatalf("upstream saw Cookie = %q, want it stripped", gotCookie)
+	}
+	if gotSecFetch != "" {
+		t.Fatalf("upstream saw Sec-Fetch-Site = %q, want it stripped", gotSecFetch)
+	}
+	if gotAuth != "Bearer keep-me" {
+		t.Fatalf("upstream Authorization = %q, want it forwarded", gotAuth)
+	}
+}

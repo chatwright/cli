@@ -62,6 +62,22 @@ var hopByHopHeaders = []string{
 	"Upgrade", "Te", "Trailer",
 }
 
+// clientOnlyRequestHeaders are browser-set request headers that must not be
+// forwarded upstream to the model server. This proxy exists precisely to turn
+// a browser's cross-origin call into a clean server-to-server one: an upstream
+// such as Ollama enforces its OWN CORS allowlist and answers 403 to any
+// request carrying an Origin it does not recognise — so the Origin the browser
+// stamped on its call to us must be dropped before we call the model. Referer,
+// Cookie and the Sec-Fetch-*/Access-Control-Request-* fetch-metadata headers
+// are dropped for the same reason: the upstream is not the browser's peer.
+// (Authorization is deliberately NOT in this list — it carries the caller's
+// key for the upstream and must be forwarded.)
+var clientOnlyRequestHeaders = []string{
+	"Origin", "Referer", "Cookie",
+	"Sec-Fetch-Dest", "Sec-Fetch-Mode", "Sec-Fetch-Site", "Sec-Fetch-User",
+	"Access-Control-Request-Method", "Access-Control-Request-Headers",
+}
+
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, http.MethodPost)
@@ -84,6 +100,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	copyForwardHeaders(r.Header, outReq.Header)
+	for _, h := range clientOnlyRequestHeaders {
+		outReq.Header.Del(h)
+	}
 	if outReq.Header.Get("Content-Type") == "" {
 		outReq.Header.Set("Content-Type", "application/json")
 	}
