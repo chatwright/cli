@@ -106,6 +106,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "arena":
 		return runArena(args[1:], stdout, stderr)
+	case "server":
+		return runServer(args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "chatwright: unknown command %q\n\n", args[0])
 		printUsage(stderr)
@@ -137,6 +139,7 @@ Usage:
 Commands:
   platforms   List built-in messaging platform emulators
   arena       Run and report on the actor-model arena (chatwright arena help)
+  server      Run the server companion daemon (chatwright server help)
   version     Print the CLI, runtime and sdk versions
   help        Show this help`)
 }
