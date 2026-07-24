@@ -172,6 +172,7 @@ func (s *Server) buildMux() *http.ServeMux {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
+	mux.HandleFunc("/v1/models", s.handleModels)
 	mux.HandleFunc("/datastate/query", s.handleDatastateQuery)
 	if s.uiDir != "" {
 		// Registered last, on the "/" subtree pattern: ServeMux always
