@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -33,6 +34,8 @@ const (
 	envFixtures    = "CHATWRIGHT_SERVER_DATASTATE_FIXTURES"
 	envAllowOrigin = "CHATWRIGHT_SERVER_ALLOW_ORIGIN"
 	envUIDir       = "CHATWRIGHT_SERVER_UI_DIR"
+	envUI          = "CHATWRIGHT_SERVER_UI"
+	envUIURL       = "CHATWRIGHT_SERVER_UI_URL"
 	envStateDir    = "CHATWRIGHT_HOME"
 )
 
@@ -78,7 +81,15 @@ Flags (serve/start/restart):
                                means POST /datastate/query always answers
                                "unsupported" (env %s)
   --ui-dir string              directory of a built Studio UI to serve at /,
-                               with an SPA fallback to index.html (env %s)
+                               with an SPA fallback to index.html (env %s);
+                               wins over --ui when both are given
+  --ui                         download, cache, integrity-verify and serve
+                               the Studio UI at / so the tester can run
+                               offline after the first fetch (env %s; see
+                               chatwright.dev/cli/internal/server
+                               ui_offline.go)
+  --ui-url string               override the Studio UI release base URL
+                               used by --ui (default %s, env %s)
   --allow-origin string        additional CORS origin to allow, beyond the
                                built-in https://chatwright.dev and
                                http://chatwright.localhost (repeatable; env
@@ -87,7 +98,7 @@ Flags (serve/start/restart):
 Flags (start/stop/restart):
   --state-dir string           directory for server.pid and server.log
                                (default ~/.chatwright, env %s)
-`, server.DefaultAddr, envAddr, server.DefaultUpstreamBaseURL, envUpstream, envFixtures, envUIDir, envAllowOrigin, envStateDir)
+`, server.DefaultAddr, envAddr, server.DefaultUpstreamBaseURL, envUpstream, envFixtures, envUIDir, envUI, server.DefaultUIBaseURL, envUIURL, envAllowOrigin, envStateDir)
 }
 
 // envOrDefault returns the named environment variable's value when set and
@@ -98,6 +109,22 @@ func envOrDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBoolOrDefault is envOrDefault for a boolean flag (--ui): an unset or
+// unparseable environment value falls back to def rather than erroring, so
+// a typo'd env var degrades to the flag's ordinary default instead of
+// refusing to start the server.
+func envBoolOrDefault(key string, def bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return parsed
 }
 
 func defaultStateDir() string {
@@ -127,6 +154,8 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 	upstream := fs.String("upstream", envOrDefault(envUpstream, server.DefaultUpstreamBaseURL), "OpenAI-compatible upstream base URL")
 	fixtures := fs.String("datastate-fixtures", envOrDefault(envFixtures, ""), "path to a JSON datastate fixtures file")
 	uiDir := fs.String("ui-dir", envOrDefault(envUIDir, ""), "directory of a built Studio UI to serve at /")
+	uiEnabled := fs.Bool("ui", envBoolOrDefault(envUI, false), "download, cache, verify and serve the Studio UI at /")
+	uiURL := fs.String("ui-url", envOrDefault(envUIURL, ""), "override the Studio UI release base URL used by --ui")
 	var allowOrigins repeatedFlag
 	fs.Var(&allowOrigins, "allow-origin", "additional CORS origin to allow (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -134,23 +163,31 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 	}
 
 	origins := resolveAllowedOrigins(allowOrigins)
-
 	logger := log.New(stdout, "", log.LstdFlags)
+
+	// Created before the server so a --ui download can itself be
+	// interrupted by Ctrl-C/SIGTERM rather than only the eventual listener.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	resolvedUIDir, err := resolveServeUIDir(ctx, *uiDir, *uiEnabled, *uiURL, logger)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "chatwright server serve: %v\n", err)
+		return 1
+	}
+
 	srv, err := server.New(server.Config{
 		Version:         cliVersion(),
 		UpstreamBaseURL: *upstream,
 		FixturesPath:    *fixtures,
 		Logger:          logger,
 		AllowedOrigins:  origins,
-		UIDir:           *uiDir,
+		UIDir:           resolvedUIDir,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright server serve: %v\n", err)
 		return 1
 	}
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	_, _ = fmt.Fprintf(stdout, "chatwright server listening on %s (upstream %s)\n", *addr, *upstream)
 	if err := srv.ListenAndServe(ctx, *addr); err != nil {
@@ -159,6 +196,28 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintln(stdout, "chatwright server stopped")
 	return 0
+}
+
+// resolveServeUIDir decides which directory (if any) the UI static handler
+// should serve. An explicit --ui-dir always wins over --ui: it is a
+// deliberate local override, and resolveServeUIDir never second-guesses it
+// with a network call. With --ui-dir empty and --ui set, it delegates to
+// server.ResolveOfflineUI's download/cache/verify pipeline. With neither
+// set, it returns "" — unchanged behavior: no UI is served.
+func resolveServeUIDir(ctx context.Context, uiDir string, uiEnabled bool, uiURL string, logger *log.Logger) (string, error) {
+	if uiDir != "" {
+		if uiEnabled {
+			logger.Printf("ui: --ui-dir %q takes precedence over --ui; serving that local directory as-is", uiDir)
+		}
+		return uiDir, nil
+	}
+	if !uiEnabled {
+		return "", nil
+	}
+	return server.ResolveOfflineUI(ctx, server.OfflineUIOptions{
+		BaseURL: uiURL,
+		Logger:  logger,
+	})
 }
 
 // resolveAllowedOrigins merges --allow-origin occurrences with a
@@ -185,6 +244,8 @@ type serverStartFlags struct {
 	upstream     string
 	fixtures     string
 	uiDir        string
+	uiEnabled    bool
+	uiURL        string
 	allowOrigins repeatedFlag
 	stateDir     string
 }
@@ -197,12 +258,15 @@ func parseServerStartFlags(name string, args []string, stderr io.Writer) (*serve
 	upstream := fs.String("upstream", envOrDefault(envUpstream, server.DefaultUpstreamBaseURL), "OpenAI-compatible upstream base URL")
 	fixtures := fs.String("datastate-fixtures", envOrDefault(envFixtures, ""), "path to a JSON datastate fixtures file")
 	uiDir := fs.String("ui-dir", envOrDefault(envUIDir, ""), "directory of a built Studio UI to serve at /")
+	uiEnabled := fs.Bool("ui", envBoolOrDefault(envUI, false), "download, cache, verify and serve the Studio UI at /")
+	uiURL := fs.String("ui-url", envOrDefault(envUIURL, ""), "override the Studio UI release base URL used by --ui")
 	fs.Var(&f.allowOrigins, "allow-origin", "additional CORS origin to allow (repeatable)")
 	stateDir := fs.String("state-dir", envOrDefault(envStateDir, defaultStateDir()), "directory for server.pid and server.log")
 	if err := fs.Parse(args); err != nil {
 		return nil, 2
 	}
 	f.addr, f.upstream, f.fixtures, f.uiDir, f.stateDir = *addr, *upstream, *fixtures, *uiDir, *stateDir
+	f.uiEnabled, f.uiURL = *uiEnabled, *uiURL
 	return f, 0
 }
 
@@ -252,6 +316,12 @@ func startDaemon(f *serverStartFlags, stdout, stderr io.Writer) int {
 	}
 	if f.uiDir != "" {
 		childArgs = append(childArgs, "--ui-dir", f.uiDir)
+	}
+	if f.uiEnabled {
+		childArgs = append(childArgs, "--ui")
+	}
+	if f.uiURL != "" {
+		childArgs = append(childArgs, "--ui-url", f.uiURL)
 	}
 	for _, origin := range f.allowOrigins {
 		childArgs = append(childArgs, "--allow-origin", origin)

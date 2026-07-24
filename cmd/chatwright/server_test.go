@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"io"
+	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,10 +26,37 @@ func TestRunServerHelp(t *testing.T) {
 		t.Fatalf("runServer(help) code = %d, want 0", code)
 	}
 	got := stdout.String()
-	for _, want := range []string{"server serve", "server start", "server stop", "server restart", "--addr", "--ui-dir", "--allow-origin"} {
+	for _, want := range []string{"server serve", "server start", "server stop", "server restart", "--addr", "--ui-dir", "--ui", "--ui-url", "--allow-origin"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+// --- resolveServeUIDir: --ui-dir/--ui precedence ---
+
+func TestResolveServeUIDirPrefersExplicitUIDirOverUI(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.New(io.Discard, "", 0)
+	// A --ui-url that nothing listens on: if resolveServeUIDir tried to use
+	// it, this would fail (or hang). It must not be attempted at all when
+	// --ui-dir is set, per the "--ui-dir wins" precedence rule.
+	got, err := resolveServeUIDir(context.Background(), dir, true, "http://127.0.0.1:1/", logger)
+	if err != nil {
+		t.Fatalf("resolveServeUIDir() error = %v, want --ui-dir to win without attempting any network call", err)
+	}
+	if got != dir {
+		t.Fatalf("resolveServeUIDir() = %q, want %q", got, dir)
+	}
+}
+
+func TestResolveServeUIDirNeitherFlagMeansNoUI(t *testing.T) {
+	got, err := resolveServeUIDir(context.Background(), "", false, "", log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatalf("resolveServeUIDir() error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("resolveServeUIDir() = %q, want empty when neither --ui-dir nor --ui is set", got)
 	}
 }
 
