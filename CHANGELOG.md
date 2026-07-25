@@ -5,6 +5,30 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
+## Unreleased
+
+### Fixed
+
+- `chatwright run`: a document whose actor could not act at all — most
+  commonly a cassette replay cache miss, e.g. after `chatwright run example
+  --write` followed by an edit to the goal — was reported as
+  `outcome=not verified: journal evidence incomplete: …`, indistinguishable
+  from the bot itself having misbehaved, and exited `1`, the same code a
+  real verification failure uses. The underlying cause (a loop event's own
+  `proposeError`, already carried in the run bundle) was silently dropped
+  on the floor. It is now reported distinctly —
+  `outcome=actor unavailable: actor: replay cache miss: …` — names the
+  likely cause and the fix (re-record the cassette against a live provider,
+  or run against a live provider directly), and exits a new, distinct code
+  (`3`) rather than `1`, mirroring the founder's decision for AI-judged
+  assertions that a broken harness must never look like a broken bot, and
+  must never share an exit code with one.
+- `chatwright run`: a document whose actor ran to completion but whose
+  `verify` block did **not** hold (a genuine bot-behaviour failure) used to
+  exit `0` — indistinguishable from a real pass — because the exit-code
+  decision checked only the part's status, never `verified`. It now exits
+  `1`, as `outcome=not verified` always should have.
+
 ## 0.4.0 — 2026-07-25
 
 ### Added

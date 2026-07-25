@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,10 +22,35 @@ import (
 	"strings"
 	"time"
 
+	"chatwright.dev/runtime/actor"
 	runengine "chatwright.dev/runtime/run"
 	"chatwright.dev/runtime/scenario"
 	"chatwright.dev/sdk"
 )
+
+// exitActorUnavailable is `chatwright run`'s exit code for a run whose actor
+// was never able to act at all — most commonly a cassette replay cache
+// miss — as opposed to exitVerificationFailed, which means the actor ran
+// and the journal it produced simply didn't show what was expected. The two
+// are deliberately different exit codes, not just different wording,
+// mirroring the founder's own decision for AI-judged assertions (spec/
+// features/chatwright/ai-driven-testing/ai-judged-assertions/README.md,
+// "Open Questions … ANSWERED (founder, 2026-07-24): an undecided judgement
+// exits non-zero. A broken judge is a broken test. The exit code stays
+// distinct from an assertion failure so CI can tell 'the bot is broken'
+// from 'the judge is unavailable'"). This command generalises the same
+// reasoning to the actor side of the same seam: a harness that could not
+// run is not the same exit condition as a bot that failed its checks, and
+// collapsing them into one exit code would make that distinction
+// unobservable from a shell script or CI job.
+const exitActorUnavailable = 3
+
+// exitVerificationFailed is the exit code for a run that executed to
+// completion (or otherwise produced a journal) but whose declared
+// successCriteria/verify block did not hold, or whose part status was not
+// PartCompleted for a reason other than an actor failure — the pre-existing
+// "outcome=not verified" case.
+const exitVerificationFailed = 1
 
 // runRun implements `chatwright run DOCUMENT [--out DIR]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
@@ -162,8 +188,14 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 
 	_, _ = fmt.Fprintf(stdout, "%s\n", outcome)
 	_, _ = fmt.Fprintf(stdout, "wrote %s\n", bundlePath)
-	if !outcome.succeeded() {
-		return 1
+	switch {
+	case outcome.actorFailed:
+		// A harness failure (the actor was never driven at all) must never
+		// exit the same way an executed-but-unverified run does — see
+		// exitActorUnavailable's own doc comment.
+		return exitActorUnavailable
+	case !outcome.succeeded():
+		return exitVerificationFailed
 	}
 	return 0
 }
@@ -181,13 +213,71 @@ type runOutcome struct {
 	judged       bool
 	verified     bool
 	verifyDetail string
+
+	// actorFailed is true when the actor could not be driven at all for one
+	// of this run's ai-goal parts — a LoopEvent carrying a non-empty
+	// ProposeError (see actorFailureFromParts) — as opposed to the actor
+	// having run and the journal it produced simply not showing what was
+	// expected. This is deliberately its own field rather than folded into
+	// "not verified": a harness that never got to try must never be
+	// reported the same way as a bot that tried and failed its checks (see
+	// exitActorUnavailable's own doc comment, and the ai-judged-assertions
+	// feature's "a judge that fails must not look like a judge that
+	// passed" principle, which this generalises to the actor side of the
+	// same seam).
+	actorFailed bool
+	// actorFailureDetail is the ProposeError text itself when actorFailed —
+	// already a complete, self-describing error (e.g. "actor: replay cache
+	// miss: goal=... task=... observation#1 messages=0 history=0") — empty
+	// otherwise.
+	actorFailureDetail string
+	// actorCacheMiss is true when actorFailed's cause was specifically
+	// actor.ErrCassetteCacheMiss, so String can point the reader at the
+	// actual fix (re-record the cassette, or run against a live provider)
+	// instead of leaving them to guess from the bare error text.
+	actorCacheMiss bool
 }
 
+// succeeded reports whether this run should be treated as a success for
+// exit-code purposes. All three of the following must hold:
+//   - the actor was never reported unavailable (see actorFailed's own doc
+//     comment) — a harness failure is never a success;
+//   - the part completed (partStatus == "completed");
+//   - either the document declared no verify block (judged: a judged run
+//     has nothing deterministic to fail) or its verify block held
+//     (verified).
+//
+// The third condition fixes a real, adjacent bug found while verifying this
+// change: this method used to check only partStatus, so a document whose
+// actor ran to completion but whose verify block did NOT hold (a genuine
+// bot-behaviour failure — "the bot didn't do what the scenario expected")
+// exited 0, indistinguishable from a real pass. That is the same class of
+// defect as the one this file's other changes fix — a failure looking like
+// a success — just on the opposite side of the actor/verification line, so
+// it is fixed alongside it rather than left in place.
 func (o runOutcome) succeeded() bool {
-	return o.partStatus == "completed"
+	if o.actorFailed || o.partStatus != "completed" {
+		return false
+	}
+	return o.judged || o.verified
 }
+
+// cacheMissHint is appended to runOutcome.String when actorCacheMiss is
+// true — see the CLI issue this fixes (a scenario document written by
+// `chatwright run example --write`, then edited, replays against a cassette
+// keyed on the *unedited* document's goal text, so every Propose call is a
+// guaranteed cache miss). This is a predictable first-run experience, not an
+// edge case, so the message names the fix rather than just the symptom.
+const cacheMissHint = `likely cause: the checked-in cassette only replays this document unedited — editing the goal (or anything else that feeds the actor's prompt) changes its replay key. Re-record the cassette against a live provider (cast member provider.mode: "record") or point provider.mode at "live" to run this edited document.`
 
 func (o runOutcome) String() string {
+	if o.actorFailed {
+		line := fmt.Sprintf("%s: part status=%s, outcome=actor unavailable: %s", o.docID, o.partStatus, o.actorFailureDetail)
+		if o.actorCacheMiss {
+			line += "\n" + cacheMissHint
+		}
+		return line
+	}
 	verdict := "not verified"
 	switch {
 	case o.judged:
@@ -200,6 +290,44 @@ func (o runOutcome) String() string {
 		line += ": " + o.verifyDetail
 	}
 	return line
+}
+
+// actorFailureFromParts scans result's executed Parts (in execution order)
+// for an ai-goal Part whose loop could not even attempt to act: a LoopEvent
+// carrying a non-empty ProposeError, meaning actor.Loop.RunTask's call to
+// Provider.Propose itself returned an error (see actor.LoopEvent.
+// ProposeError's own doc comment — RunTask always appends that event before
+// returning the error, so it is retained evidence, not a vanished Go error).
+// At most one Part can ever carry such an event: RunTask returns immediately
+// on the first Propose error, which fails that Part and — because a Part
+// failure always aborts or coverage-gaps every remaining Part (run.Execute) —
+// no later Part ever runs far enough to add one of its own.
+//
+// This is deliberately narrower than "the Part failed"
+// (run.PartOutcome.Status == run.PartFailed also covers, say, a RecordStep
+// or RecordCost error): those are genuine runtime errors about a task the
+// actor *did* attempt, not evidence that the actor was never driven at all,
+// and treating them the same would blur exactly the distinction this
+// function exists to draw — see runOutcome.actorFailed's own doc comment.
+//
+// detail is the ProposeError text itself, already a complete, self-
+// describing error. cacheMiss reports whether the underlying cause was
+// specifically actor.ErrCassetteCacheMiss, read from the same Part's own
+// PartOutcome.Err (which wraps that same error — a bare string can't be
+// compared with errors.Is, so this is why both are consulted rather than
+// just the LoopEvent's own string field).
+func actorFailureFromParts(parts []runengine.PartOutcome) (detail string, cacheMiss bool, found bool) {
+	for _, p := range parts {
+		if p.AIGoal == nil {
+			continue
+		}
+		for i := len(p.AIGoal.Events) - 1; i >= 0; i-- {
+			if pe := p.AIGoal.Events[i].ProposeError; pe != "" {
+				return pe, p.Err != nil && errors.Is(p.Err, actor.ErrCassetteCacheMiss), true
+			}
+		}
+	}
+	return "", false, false
 }
 
 // assembleRunBundle converts a completed scenario.Built + run.Result into
@@ -234,6 +362,20 @@ func assembleRunBundle(doc *scenario.Document, built *scenario.Built, result run
 	if len(result.Parts) > 0 {
 		outcome.partStatus = string(result.Parts[len(result.Parts)-1].Status)
 	}
+
+	if detail, cacheMiss, found := actorFailureFromParts(result.Parts); found {
+		// The actor was never driven at all, so the journal it "produced"
+		// (if any) is not evidence of anything the bot did or didn't do —
+		// evaluating VerifySpec against it and reporting the result as
+		// "not verified" would misreport a harness failure as a failed
+		// bot. See actorFailureFromParts and runOutcome.actorFailed's own
+		// doc comments.
+		outcome.actorFailed = true
+		outcome.actorFailureDetail = detail
+		outcome.actorCacheMiss = cacheMiss
+		return b, outcome, nil
+	}
+
 	if built.VerifySpec == nil {
 		outcome.judged = true
 	} else {
