@@ -19,7 +19,12 @@ may break).
   declares a `verify` block, its journal-verified verdict and detail
   string — never printed as "verified" when the document declares no
   `verify` block, only "judged" (the format's own judged-versus-verified
-  rule). Requires `chatwright.dev/runtime` >= v0.4.0.
+  rule). Requires the `scenario` package from
+  [chatwright/runtime-go#12](https://github.com/chatwright/runtime-go/pull/12),
+  intended to release as `chatwright.dev/runtime` v0.4.0 — until that PR is
+  reviewed, merged and tagged, `go.mod` pins a pseudo-version of its branch
+  HEAD rather than v0.4.0 itself (see this repository's own PR description
+  for the exact commit).
 
 ## 0.2.0 — 2026-07-25
 

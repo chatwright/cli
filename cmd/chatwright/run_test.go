@@ -28,6 +28,19 @@ func TestRunRequiresDocument(t *testing.T) {
 	}
 }
 
+// TestRunHelp guards a bare "help" (not "-h"/"--help", already handled by
+// flag.FlagSet.Parse itself) against being swallowed as the DOCUMENT
+// positional argument — found in review of #7.
+func TestRunHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := runRun([]string{"help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("runRun([\"help\"]) code = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "chatwright run DOCUMENT") {
+		t.Errorf("stdout = %q, want the command's own usage", stdout.String())
+	}
+}
+
 func TestRunRejectsUnknownDocument(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := runRun([]string{filepath.Join(t.TempDir(), "does-not-exist.json")}, &stdout, &stderr)

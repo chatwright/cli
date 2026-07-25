@@ -28,6 +28,19 @@ import (
 
 // runRun implements `chatwright run DOCUMENT [--out DIR]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
+	// "-h"/"--help" are already handled by flag.FlagSet.Parse itself (it
+	// prints usage and returns flag.ErrHelp — see the "unexpected extra
+	// argument" branch below never being reached for those). A bare "help"
+	// is not a flag, though, and DOCUMENT is a required positional
+	// argument, so without this check "chatwright run help" would try to
+	// open a file literally named "help" instead of showing usage — the
+	// top-level `run` dispatcher in main.go treats "help" as its own
+	// command the same way.
+	if len(args) > 0 && args[0] == "help" {
+		printRunUsage(stdout)
+		return 0
+	}
+
 	fs := flag.NewFlagSet("chatwright run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	outDir := fs.String("out", ".", "output directory for the run bundle")
