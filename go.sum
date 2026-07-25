@@ -1,5 +1,5 @@
-chatwright.dev/runtime v0.3.1-0.20260725083740-c75bcb8b9e08 h1:bTxQNz/YNPEne4i5R0zis23jCgA7yfJG2KrsquWMMeI=
-chatwright.dev/runtime v0.3.1-0.20260725083740-c75bcb8b9e08/go.mod h1:eQHqkvK7lNjHoLsGNDV9QxhT+MIKA+xLLRmRPXjSFRM=
+chatwright.dev/runtime v0.4.0 h1:RXosed3GwaCT0hrtUFRVICy6hDQOFXDsQjTWt5p05EQ=
+chatwright.dev/runtime v0.4.0/go.mod h1:eQHqkvK7lNjHoLsGNDV9QxhT+MIKA+xLLRmRPXjSFRM=
 chatwright.dev/sdk v0.2.0 h1:Zs20S+t0n/jgqfmhnCnm2wk2FsnJEFO5NpLHWayisHU=
 chatwright.dev/sdk v0.2.0/go.mod h1:a2ysYRfjji0TS5byvqCDRc+VyaZ8T75G4teXCEj/EIU=
 github.com/anthropics/anthropic-sdk-go v1.59.0 h1:Idp7NBr9y1MZd6/zVHMZkdCVzqYxU3ujb2IKfxEpzZ0=
