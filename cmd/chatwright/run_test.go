@@ -68,7 +68,7 @@ func TestRunEndToEndAgainstGreetbotFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(%s) error = %v", bundlePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	b, err := sdk.Read(f)
 	if err != nil {
