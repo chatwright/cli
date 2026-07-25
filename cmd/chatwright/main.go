@@ -144,5 +144,8 @@ Commands:
   arena       Run and report on the actor-model arena (chatwright arena help)
   server      Run the server companion daemon (chatwright server help)
   version     Print the CLI, runtime and sdk versions
-  help        Show this help`)
+  help        Show this help
+
+Try it now — no files, no network, no API key:
+  chatwright run example`)
 }
