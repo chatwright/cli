@@ -58,6 +58,10 @@
       }
     }
   ],
+  "ceiling": {
+    "maxSteps": 12,
+    "maxDurationSeconds": 240
+  },
   "verify": {
     "chat": "main",
     "metDetail": "started, clicked English, acknowledged — all journal-verified",

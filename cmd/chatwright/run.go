@@ -8,7 +8,10 @@
 // scenario.Build deliberately leaves to its caller — a bundle is a
 // bundle-only, wire-typed concept with no runtime counterpart, exactly the
 // same division run.AssembleBundleRun already draws for the arena
-// subcommand) and writes it to disk.
+// subcommand) and writes it to disk. Everything about how the run is
+// *presented* — colour, the live progress line, the JSON shape, the
+// summary block — lives in run_output.go and progress.go; this file owns
+// orchestration only.
 package main
 
 import (
@@ -22,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"chatwright.dev/cli/internal/term"
 	"chatwright.dev/runtime/actor"
 	runengine "chatwright.dev/runtime/run"
 	"chatwright.dev/runtime/scenario"
@@ -52,7 +56,18 @@ const exitActorUnavailable = 3
 // "outcome=not verified" case.
 const exitVerificationFailed = 1
 
-// runRun implements `chatwright run DOCUMENT [--out DIR]`.
+// exitInterrupted is the exit code for a run cut short by an interrupt
+// signal (Ctrl-C) — see interruptibleContext. 130 is the conventional
+// Unix "terminated by signal N" code (128 + SIGINT's own number, 2), the
+// same value a shell reports for its own Ctrl-C'd child processes, chosen
+// deliberately over reusing exitVerificationFailed or
+// exitActorUnavailable: "the user stopped this" is a third condition, not
+// a specialisation of either existing failure class, and a CI script
+// checking for it should never have to also rule out a genuine
+// verification failure or a broken harness to do so.
+const exitInterrupted = 130
+
+// runRun implements `chatwright run DOCUMENT [flags]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	// A bare "help", "-h" or "--help" as the first argument all mean the
 	// same thing here — mirroring main.go's own "help"/"-h"/"--help"
@@ -79,12 +94,15 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { printRunUsage(stderr) }
 	outDir := fs.String("out", ".", "output directory for the run bundle")
 	write := fs.Bool("write", false, `write the built-in example's document and cassette into --out instead of running them (DOCUMENT must be "example")`)
+	jsonOut := fs.Bool("json", false, "emit the run outcome as JSON on stdout in place of the human summary (see printRunUsage's own JSON-shape documentation); never suppressed by --quiet")
+	quiet := fs.Bool("quiet", false, "print nothing on a successful run; a failure or an interrupted run is still reported (errors only); never suppresses --json")
+	verbose := fs.Bool("verbose", false, "show every actor loop iteration on stderr as it happens, not just task boundaries; mutually exclusive with --quiet")
 	// flag.FlagSet.Parse stops at the first non-flag argument, so a flag
 	// given after DOCUMENT (as this command's own usage line documents:
 	// "chatwright run DOCUMENT [--out DIR]") would otherwise be rejected as
-	// an extra positional argument — reorder --out/--write (in either
-	// "--flag VALUE" or "--flag=VALUE" form, or bare for --write) to the
-	// front first, wherever they appear.
+	// an extra positional argument — reorder every recognised flag (in
+	// either "--flag VALUE" or "--flag=VALUE" form, or bare for a boolean
+	// flag) to the front first, wherever it appears.
 	if err := fs.Parse(reorderRunFlagsFirst(args)); err != nil {
 		return 2
 	}
@@ -95,6 +113,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if fs.NArg() > 1 {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: unexpected extra argument %q\n\n", fs.Arg(1))
+		printRunUsage(stderr)
+		return 2
+	}
+	if *quiet && *verbose {
+		_, _ = fmt.Fprintln(stderr, "chatwright run: --quiet and --verbose are mutually exclusive")
 		printRunUsage(stderr)
 		return 2
 	}
@@ -121,7 +144,16 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	ctx := context.Background()
+	profileOut := detectProfile(stdout, os.Getenv)
+	profileErr := detectProfile(stderr, os.Getenv)
+
+	// See interrupt.go's own package doc comment for exactly what pressing
+	// Ctrl-C during Execute below actually does, and what it deliberately
+	// does not (a purely deterministic Part has no ctx-aware interception
+	// point at all).
+	ctx, cancelInterrupt, interrupted := interruptibleContext(context.Background())
+	defer cancelInterrupt()
+
 	// A real file on disk always wins over the built-in example: silently
 	// shadowing a document the user actually has is a confusing failure, and
 	// "example" is a legal filename. Only when nothing of that name exists
@@ -139,11 +171,18 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	provider := scenario.FileScenarioProvider{}
 	doc, report, err := provider.Load(ctx, docPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
+		var rej *scenario.RejectionError
+		if errors.As(err, &rej) {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: %s", formatRejectionError(profileErr, rej))
+		} else {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
+		}
 		return 1
 	}
-	for _, w := range report.Warnings() {
-		_, _ = fmt.Fprintf(stderr, "chatwright run: warning: %s (%s)\n", w.Message, w.Code)
+	if !*quiet {
+		for _, w := range report.Warnings() {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: warning: %s (%s)\n", w.Message, w.Code)
+		}
 	}
 
 	built, err := scenario.Build(ctx, doc, scenario.BuildOptions{})
@@ -153,7 +192,39 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	defer built.Close()
 
+	var reporter *progressReporter
+	if !*quiet {
+		if line, ok := formatCeilingHeader(profileErr, built.Run.Ceiling); ok {
+			_, _ = fmt.Fprintln(stderr, line)
+		}
+		reporter = newProgressReporter(stderr, profileErr, *verbose, built.Run.Environment.Now)
+		built.Run.OnProgress = reporter.Handle
+	}
+
+	// duration is real wall-clock time, deliberately never
+	// built.Run.Environment.Now (the clock Execute itself uses for budget/
+	// ceiling accounting): scenario.Build freezes that clock for a
+	// cassette-only document — see scenario.defaultClock — precisely so a
+	// replayed run's timestamps are reproducible, which would make this
+	// summary's own "duration" a permanently fixed 0ms for the very
+	// documents (the shipped example among them) most users try first. The
+	// live progress reporter's own "elapsed" gauge intentionally stays on
+	// built.Run.Environment.Now (see newProgressReporter's own doc
+	// comment) — it exists to track budget burn consistently with how
+	// Execute itself measures it, a different concern from "how long did
+	// this actually take on my machine."
+	wallStart := time.Now()
 	result, err := built.Run.Execute(ctx)
+	duration := time.Since(wallStart)
+	if reporter != nil {
+		// Finish before anything else touches stdout or stderr: a redrawn
+		// progress line left mid-line (no trailing newline yet) would
+		// otherwise have the next thing printed — an error, the summary —
+		// appended straight onto its tail on a real terminal, since stdout
+		// and stderr share the same physical screen even though they are
+		// different streams.
+		reporter.Finish()
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 		return 1
@@ -186,9 +257,42 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	_, _ = fmt.Fprintf(stdout, "%s\n", outcome)
-	_, _ = fmt.Fprintf(stdout, "wrote %s\n", bundlePath)
+	wasInterrupted := interrupted.Load()
+	if wasInterrupted {
+		_, _ = fmt.Fprintf(stderr, "chatwright run: interrupted — %s; kept what was captured\n", interruptSummary(result))
+	}
+
+	usage := aggregateUsage(b)
 	switch {
+	case *jsonOut:
+		// --json's own contract (documented in printRunUsage): exactly one
+		// JSON object on stdout, never suppressed by --quiet — the human
+		// summary below is skipped entirely instead, never both.
+		if err := writeRunJSONResult(stdout, buildRunJSONResult(outcome, wasInterrupted, duration, usage, bundlePath, report.Warnings())); err != nil {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: encode result: %v\n", err)
+			return 1
+		}
+	case !*quiet || !outcome.succeeded() || wasInterrupted:
+		// --quiet's own contract: silence on an unremarkable success: a
+		// failure (verification failed, actor unavailable) or an
+		// interrupted run is still reported, exactly as if --quiet had not
+		// been given — "errors only" including the interruption itself.
+		_, _ = fmt.Fprint(stdout, renderRunSummary(profileOut, outcome, usage, duration, bundlePath))
+	}
+
+	return runExitCode(wasInterrupted, outcome)
+}
+
+// runExitCode is `chatwright run`'s own exit-code decision, factored out
+// of runRun as a pure function so its priority ordering (interrupted
+// outranks actor-unavailable outranks not-verified outranks success) is
+// directly unit-testable without an actual run — see printRunUsage's own
+// "Exit codes" section, which this function's four return values are the
+// single source of truth for.
+func runExitCode(wasInterrupted bool, outcome runOutcome) int {
+	switch {
+	case wasInterrupted:
+		return exitInterrupted
 	case outcome.actorFailed:
 		// A harness failure (the actor was never driven at all) must never
 		// exit the same way an executed-but-unverified run does — see
@@ -200,10 +304,23 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// detectProfile computes a term.Profile for w: a real *os.File (os.Stdout
+// or os.Stderr, as main always passes) is checked for both terminal-ness
+// and, via getenv, the NO_COLOR/CLICOLOR/CLICOLOR_FORCE/locale
+// conventions; anything else (a bytes.Buffer, as every test in this
+// package passes) is never a terminal — the correct, deterministic answer
+// for a test, and also the conservative, plain-text-only default a real
+// but unusual destination (a socket, say) should get too.
+func detectProfile(w io.Writer, getenv func(string) string) term.Profile {
+	f, _ := w.(*os.File)
+	return term.NewProfile(f, getenv)
+}
+
 // runOutcome is `chatwright run`'s own human-readable summary of one
 // executed document — never part of the written bundle (which carries the
 // full evidence already); this is what stdout shows a developer without
-// them having to open the bundle.
+// them having to open the bundle. See run_output.go for how it is
+// rendered, both as the human summary block and as --json's own shape.
 type runOutcome struct {
 	docID, partStatus string
 	// judged is true when the document declared no verify block — see the
@@ -232,7 +349,7 @@ type runOutcome struct {
 	// otherwise.
 	actorFailureDetail string
 	// actorCacheMiss is true when actorFailed's cause was specifically
-	// actor.ErrCassetteCacheMiss, so String can point the reader at the
+	// actor.ErrCassetteCacheMiss, so the summary can point the reader at the
 	// actual fix (re-record the cassette, or run against a live provider)
 	// instead of leaving them to guess from the bare error text.
 	actorCacheMiss bool
@@ -262,35 +379,15 @@ func (o runOutcome) succeeded() bool {
 	return o.judged || o.verified
 }
 
-// cacheMissHint is appended to runOutcome.String when actorCacheMiss is
-// true — see the CLI issue this fixes (a scenario document written by
-// `chatwright run example --write`, then edited, replays against a cassette
-// keyed on the *unedited* document's goal text, so every Propose call is a
-// guaranteed cache miss). This is a predictable first-run experience, not an
-// edge case, so the message names the fix rather than just the symptom.
+// cacheMissHint is appended to the human summary (and available via
+// runOutcome.actorCacheMiss to --json's own consumer) when actorCacheMiss
+// is true — see the CLI issue this fixes (a scenario document written by
+// `chatwright run example --write`, then edited, replays against a
+// cassette keyed on the *unedited* document's goal text, so every Propose
+// call is a guaranteed cache miss). This is a predictable first-run
+// experience, not an edge case, so the message names the fix rather than
+// just the symptom.
 const cacheMissHint = `likely cause: the checked-in cassette only replays this document unedited — editing the goal (or anything else that feeds the actor's prompt) changes its replay key. Re-record the cassette against a live provider (cast member provider.mode: "record") or point provider.mode at "live" to run this edited document.`
-
-func (o runOutcome) String() string {
-	if o.actorFailed {
-		line := fmt.Sprintf("%s: part status=%s, outcome=actor unavailable: %s", o.docID, o.partStatus, o.actorFailureDetail)
-		if o.actorCacheMiss {
-			line += "\n" + cacheMissHint
-		}
-		return line
-	}
-	verdict := "not verified"
-	switch {
-	case o.judged:
-		verdict = "judged (no independent journal verification declared)"
-	case o.verified:
-		verdict = "verified"
-	}
-	line := fmt.Sprintf("%s: part status=%s, outcome=%s", o.docID, o.partStatus, verdict)
-	if o.verifyDetail != "" {
-		line += ": " + o.verifyDetail
-	}
-	return line
-}
 
 // actorFailureFromParts scans result's executed Parts (in execution order)
 // for an ai-goal Part whose loop could not even attempt to act: a LoopEvent
@@ -309,6 +406,12 @@ func (o runOutcome) String() string {
 // actor *did* attempt, not evidence that the actor was never driven at all,
 // and treating them the same would blur exactly the distinction this
 // function exists to draw — see runOutcome.actorFailed's own doc comment.
+// A cancelled context (see interrupt.go) surfaces exactly the same way —
+// Provider.Propose returning a context-cancellation error is just another
+// ProposeError as far as this function is concerned, which is why an
+// interrupted run's PartStatus/Verdict still make sense on their own, even
+// though runRun's own exitInterrupted always takes priority over
+// exitActorUnavailable for the actual exit code.
 //
 // detail is the ProposeError text itself, already a complete, self-
 // describing error. cacheMiss reports whether the underlying cause was
@@ -394,34 +497,52 @@ func assembleRunBundle(doc *scenario.Document, built *scenario.Built, result run
 	return b, outcome, nil
 }
 
-// reorderRunFlagsFirst moves "--out"/"-out" (and its value, in either
-// "--out DIR" or "--out=DIR" form) and "--write"/"-write" (bare, or
-// "--write=BOOL") to the front of args, leaving every other argument —
-// including DOCUMENT — in its original relative order. See runRun's own
-// comment on why this command needs it and the arena subcommand (all
-// flags, no positional argument) does not.
+// reorderRunFlagsFirst moves every recognised `chatwright run` flag (in
+// either "--flag VALUE"/"--flag=VALUE" form, or bare for a boolean flag) to
+// the front of args, leaving every other argument — including DOCUMENT —
+// in its original relative order. See runRun's own comment on why this
+// command needs it and the arena subcommand (all flags, no positional
+// argument) does not.
 func reorderRunFlagsFirst(args []string) []string {
+	valueFlags := map[string]bool{"--out": true, "-out": true}
+	boolFlags := map[string]bool{
+		"--write": true, "-write": true,
+		"--json": true, "-json": true,
+		"--quiet": true, "-quiet": true,
+		"--verbose": true, "-verbose": true,
+	}
+
 	var flagArgs, rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == "--out" || a == "-out":
+		case valueFlags[a]:
 			flagArgs = append(flagArgs, a)
 			if i+1 < len(args) {
 				i++
 				flagArgs = append(flagArgs, args[i])
 			}
-		case strings.HasPrefix(a, "--out=") || strings.HasPrefix(a, "-out="):
+		case hasFlagPrefix(a, valueFlags) || hasFlagPrefix(a, boolFlags):
 			flagArgs = append(flagArgs, a)
-		case a == "--write" || a == "-write":
-			flagArgs = append(flagArgs, a)
-		case strings.HasPrefix(a, "--write=") || strings.HasPrefix(a, "-write="):
+		case boolFlags[a]:
 			flagArgs = append(flagArgs, a)
 		default:
 			rest = append(rest, a)
 		}
 	}
 	return append(flagArgs, rest...)
+}
+
+// hasFlagPrefix reports whether a is one of names' "=value" forms (e.g.
+// "--out=" for the valueFlags set) — reorderRunFlagsFirst's own helper for
+// the "--flag=value" spelling of any recognised flag.
+func hasFlagPrefix(a string, names map[string]bool) bool {
+	for name := range names {
+		if strings.HasPrefix(a, name+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 func printRunUsage(w io.Writer) {
@@ -436,7 +557,7 @@ scenario) instead — no files of your own, no network call and no API key
 required.
 
 Usage:
-  chatwright run DOCUMENT [--out DIR]
+  chatwright run DOCUMENT [--out DIR] [--json | --quiet | --verbose]
   chatwright run example [--out DIR]
   chatwright run example --write [--out DIR]
 
@@ -446,6 +567,46 @@ Flags:
   --write     write the built-in example's document and cassette into
               --out instead of running them, so you can read the format,
               change the goal, and re-run it (DOCUMENT must be "example")
+  --json      emit the run outcome as a single JSON object on stdout in
+              place of the human summary — never suppressed by --quiet.
+              Shape (fields omitted when zero-valued):
+                documentId      string   the document's own "id"
+                partStatus      string   e.g. "completed", "failed"
+                verdict         string   "verified" | "judged" |
+                                         "not-verified" | "actor-unavailable"
+                detail          string   the verdict's own explanation
+                actorCacheMiss  bool     verdict actor-unavailable was a
+                                         cassette replay cache miss
+                interrupted     bool     the run was cut short by Ctrl-C
+                durationMs      int      Execute's own wall-clock duration
+                usage           object   inputTokens/outputTokens/cost/
+                                         callCount, summed across every
+                                         ai-goal part (always present, may
+                                         be all zero)
+                bundlePath      string   where the run bundle was written
+                warnings        array    every validation warning
+                                         (code/pointer/message/severity),
+                                         same shape regardless of --quiet
+  --quiet     print nothing on a successful run; a failure (verification
+              failed, actor unavailable) or an interrupted run is still
+              reported — errors only. Never suppresses --json.
+  --verbose   show every actor loop iteration on stderr as it happens
+              (task boundaries only otherwise, once a run is piped rather
+              than watched live). Mutually exclusive with --quiet.
+
+Exit codes:
+  0    the run completed and its declared outcome held (verified, or
+       judged when the document declares no verify block)
+  1    the run executed but its declared outcome did not hold (a genuine
+       bot-behaviour failure — "not verified"), or a harness-level error
+       (a bad document path, a write failure) unrelated to the actor
+  2    usage error: a bad flag or a missing/extra argument — the run
+       never started
+  3    the actor could not be driven at all (most commonly a cassette
+       replay cache miss) — a harness failure, never conflated with a
+       verification failure (see exitActorUnavailable's own doc comment)
+  130  the run was interrupted (Ctrl-C) before reaching its own
+       conclusion — the conventional Unix "terminated by signal 2" code
 
 Examples:
   chatwright run example
@@ -456,5 +617,9 @@ Examples:
   chatwright run example --write
       Write greetbot-language-onboarding.json (and its cassette) into "."
       instead of running it. Edit the goal, then run:
-        chatwright run greetbot-language-onboarding.json`)
+        chatwright run greetbot-language-onboarding.json
+
+  chatwright run example --json --quiet
+      Run the example with zero human-oriented output: no progress line,
+      no warnings — just the JSON result on stdout, for a CI job to parse.`)
 }

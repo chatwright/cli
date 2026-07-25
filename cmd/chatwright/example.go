@@ -1,13 +1,31 @@
 // example.go embeds this repository's own copy of the standard
 // self-contained-scenario-document worked example — GreetBot's language-
-// onboarding fixture, copied verbatim from chatwright.dev/runtime's own
-// scenario/testdata/ (never re-authored; see run_test.go's own
-// greetbotFixturePath) — so `chatwright run example` has something real to
-// execute the moment a user installs this binary: no files of their own, no
-// network call, no API key. The document's "bot" is exampleBot:greetbot (a
-// bot compiled into chatwright.dev/runtime, no URL) and its one cast member
-// is a cassette-replay provider (a canned recording, not a live model), so
+// onboarding fixture, copied from chatwright.dev/runtime's own
+// scenario/testdata/ (see run_test.go's own greetbotFixturePath) — so
+// `chatwright run example` has something real to execute the moment a user
+// installs this binary: no files of their own, no network call, no API
+// key. The document's "bot" is exampleBot:greetbot (a bot compiled into
+// chatwright.dev/runtime, no URL) and its one cast member is a
+// cassette-replay provider (a canned recording, not a live model), so
 // nothing about running it ever leaves the process.
+//
+// ONE DELIBERATE DIVERGENCE FROM THE UPSTREAM COPY: this copy's own
+// top-level "ceiling" object is NOT present in chatwright.dev/runtime's
+// scenario/testdata/greetbot-language-onboarding.json and must not be
+// removed by a future re-sync. Without it, `chatwright run example` — this
+// CLI's own bundled, first-thing-a-stranger-tries demo — printed its own
+// "no-run-ceiling" validation warning as the very first line a new user
+// ever saw (scenario/validate.go's validateCeiling); shipping a warning
+// about your own demo is a bad first impression, and the fix belongs here
+// (a document-authoring choice), not in the runtime's validation rule.
+// Adding it is safe: Ceiling is a Run-level execution control
+// (run.RunCeiling), never part of what feeds an actor's Prompt, so it does
+// not affect the cassette's replay-key hashing (see the next paragraph) —
+// TestRunExampleEndToEnd still passes unchanged. Its values
+// (maxSteps/maxDurationSeconds) deliberately match the document's one Part
+// own goal.Budgets exactly: this document has a single Part, so the
+// run-level ceiling and that Part's own task budget are the same bound
+// restated, not a materially different aggregate limit.
 //
 // KEEPING THE EMBEDDED CASSETTE IN SYNC: the cassette's entries are keyed by
 // a hash of the whole actor Prompt, and Prompt.History embeds run-bundle wire
@@ -16,8 +34,10 @@
 // starts failing with a replay cache miss. It is not a copy that only drifts
 // when someone edits it. When bumping chatwright.dev/runtime, re-copy
 // scenario/testdata/cassettes/greetbot-language-onboarding.json from that
-// module (it regenerates its own via a build-tag-guarded recorder) and re-run
-// the tests here — TestRunExampleEndToEnd catches it, loudly, which is how
+// module (it regenerates its own via a build-tag-guarded recorder), re-apply
+// this file's own "ceiling" divergence to the re-copied document if the
+// upstream fixture still lacks one, and re-run the tests here —
+// TestRunExampleEndToEnd catches a cassette mismatch loudly, which is how
 // the sdk Verdict->Freshness rename was caught on 2026-07-25.
 //
 // chatwright.dev/runtime/scenario has no seam for supplying a Document or a
