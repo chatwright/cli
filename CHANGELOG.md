@@ -5,6 +5,23 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
+## 0.6.0 — 2026-07-25
+
+### Changed
+
+- Depends on `chatwright.dev/sdk` v0.3.0 and `chatwright.dev/runtime` v0.5.0,
+  which rename the observe-side click-validity type `Verdict` to `Freshness`
+  (wire tag `verdict` → `freshness`; values `fresh`/`stale` unchanged). Run
+  bundles this CLI writes now carry `freshness`. "Verdict" is reserved for the
+  AI-judged-assertion outcome. The Studio player accepts both, so recordings
+  made before this release still replay.
+- The embedded `chatwright run example` cassette was re-copied from
+  `chatwright.dev/runtime`'s regenerated fixture. Its entries are keyed by a
+  hash of the whole actor prompt, which embeds run-bundle wire types, so the
+  rename above invalidated every key in the previous copy — `run example`
+  would have failed with a replay cache miss. Caught by this repository's own
+  end-to-end tests before release.
+
 ## 0.5.0 — 2026-07-25
 
 ### Fixed

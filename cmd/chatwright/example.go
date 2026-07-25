@@ -9,6 +9,17 @@
 // is a cassette-replay provider (a canned recording, not a live model), so
 // nothing about running it ever leaves the process.
 //
+// KEEPING THE EMBEDDED CASSETTE IN SYNC: the cassette's entries are keyed by
+// a hash of the whole actor Prompt, and Prompt.History embeds run-bundle wire
+// types — so ANY change to those types (a renamed field, an added one)
+// silently invalidates every key in this copy, and `chatwright run example`
+// starts failing with a replay cache miss. It is not a copy that only drifts
+// when someone edits it. When bumping chatwright.dev/runtime, re-copy
+// scenario/testdata/cassettes/greetbot-language-onboarding.json from that
+// module (it regenerates its own via a build-tag-guarded recorder) and re-run
+// the tests here — TestRunExampleEndToEnd catches it, loudly, which is how
+// the sdk Verdict->Freshness rename was caught on 2026-07-25.
+//
 // chatwright.dev/runtime/scenario has no seam for supplying a Document or a
 // cassette as in-memory bytes — scenario.ScenarioProvider.Load and, deeper,
 // scenario.Build's own cassette loading (actor.LoadCassette) are both
