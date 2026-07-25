@@ -35,7 +35,24 @@ may break).
   `CHATWRIGHT_SERVER_ALLOW_ORIGIN`. `--ui-dir` optionally serves a built
   Studio UI at `/` (SPA fallback to `index.html`) alongside the API routes,
   for a future offline/local-first mode — packaging that UI is out of
-  scope here.
+  scope here (see `--ui` below, which closes that gap).
+- `GET /v1/models` on `chatwright server`: proxies the upstream's
+  OpenAI-compatible model list (Ollama and LM Studio both expose it), so the
+  Studio's **Local AI** mode can offer a dropdown of the models actually
+  present on the machine instead of a free-text field. Strips the browser
+  `Origin` and fetch-metadata headers before the upstream call — the same
+  treatment `/v1/chat/completions` already applies — so the upstream's own
+  CORS does not reject it with a 403.
+- `chatwright server --ui`: downloads, verifies, caches and serves the Studio
+  UI, for a fully offline tester (local UI, local model, local database). The
+  release manifest supplies a version and a SHA-256; the archive is verified
+  against that digest **before** extraction, extracted with path-traversal
+  and absolute-path entries rejected, and cached under
+  `~/.chatwright/ui/<version>` so subsequent starts need no network. A cached
+  UI is reused when the download cannot be reached; with neither, startup
+  fails with an explicit error rather than serving nothing. `--ui-dir` still
+  takes precedence and makes no network call. Override the source with
+  `--ui-url`.
 - `chatwright arena run --config arena.yaml --out DIR` and
   `chatwright arena report --dir DIR`, fronting
   [`chatwright.dev/runtime/arena`](https://github.com/chatwright/runtime-go)
