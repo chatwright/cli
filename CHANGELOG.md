@@ -5,7 +5,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
-## Unreleased
+## 0.5.0 — 2026-07-25
 
 ### Fixed
 
