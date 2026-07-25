@@ -177,3 +177,28 @@ func validateAgainstRunBundleSchema(t *testing.T, data []byte) {
 		t.Fatalf("bundle does not validate against %s:\n%v", schemaPath, err)
 	}
 }
+
+// TestRunExampleDoesNotShadowARealFile pins the precedence rule: the literal
+// DOCUMENT value "example" means the embedded worked example ONLY when no file
+// of that name exists. Silently running the built-in in place of a document the
+// user actually has would be a confusing failure, and "example" is a legal
+// filename.
+func TestRunExampleDoesNotShadowARealFile(t *testing.T) {
+	dir := t.TempDir()
+	shadow := filepath.Join(dir, exampleDocumentArg)
+	if err := os.WriteFile(shadow, []byte(`{"nope":true}`), 0o600); err != nil {
+		t.Fatalf("write shadowing file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{shadow, "--out", dir}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("runRun() code = 0, want non-zero: the user's own (invalid) %q must be loaded, not the embedded example; stdout=%q", exampleDocumentArg, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown-member") {
+		t.Errorf("stderr = %q, want the user's file to be parsed and rejected by rule id", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "part status=completed") {
+		t.Errorf("stdout = %q, want NO run at all — the embedded example must not have been substituted", stdout.String())
+	}
+}

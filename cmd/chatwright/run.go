@@ -96,7 +96,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 
 	ctx := context.Background()
-	if docPath == exampleDocumentArg {
+	// A real file on disk always wins over the built-in example: silently
+	// shadowing a document the user actually has is a confusing failure, and
+	// "example" is a legal filename. Only when nothing of that name exists
+	// does the argument mean "run the embedded worked example".
+	if docPath == exampleDocumentArg && !fileExists(docPath) {
 		materialized, cleanup, err := materializeExampleTemp()
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)

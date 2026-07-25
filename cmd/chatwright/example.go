@@ -99,3 +99,11 @@ func materializeExampleTemp() (docPath string, cleanup func(), err error) {
 	}
 	return docPath, cleanup, nil
 }
+
+// fileExists reports whether name is an existing regular file, so
+// `chatwright run example` prefers a document the user actually has over the
+// embedded worked example (see runRun).
+func fileExists(name string) bool {
+	info, err := os.Stat(name)
+	return err == nil && info.Mode().IsRegular()
+}
