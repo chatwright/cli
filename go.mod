@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	chatwright.dev/runtime v0.4.0
 	chatwright.dev/sdk v0.2.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 )
 
@@ -25,4 +26,5 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 )

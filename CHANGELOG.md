@@ -5,6 +5,33 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
+## Unreleased
+
+### Added
+
+- `chatwright run example`: run this CLI's own built-in worked example
+  (GreetBot's language-onboarding scenario, embedded via `go:embed` —
+  copied verbatim from `chatwright.dev/runtime`'s own
+  `scenario/testdata/`) with no files, no network call and no API key —
+  the `exampleBot:greetbot` bot and its cast member's cassette-replay
+  provider are both entirely self-contained. Previously a freshly
+  installed CLI had nothing for `chatwright run` to run.
+- `chatwright run example --write [--out DIR]`: write the example's
+  document and cassette into `DIR` (default `.`) instead of running them,
+  byte-identical to the copy `chatwright run example` executes, so a user
+  can read the format, change the goal, and re-run it with
+  `chatwright run DOCUMENT`.
+
+### Fixed
+
+- `chatwright run --help`/`-h` now print this command's own description,
+  `Usage:`, `Flags:` and worked examples (matching `chatwright arena
+  help`'s house style) instead of falling through to `flag.FlagSet`'s bare
+  default usage (just the registered `-out` flag, no description). A bare
+  `chatwright run help` already worked correctly before this change.
+- `chatwright --help` now points new users at `chatwright run example`
+  directly, alongside the existing command list.
+
 ## 0.3.0 — 2026-07-25
 
 ### Added

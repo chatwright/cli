@@ -28,28 +28,38 @@ import (
 
 // runRun implements `chatwright run DOCUMENT [--out DIR]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
-	// "-h"/"--help" are already handled by flag.FlagSet.Parse itself (it
-	// prints usage and returns flag.ErrHelp — see the "unexpected extra
-	// argument" branch below never being reached for those). A bare "help"
-	// is not a flag, though, and DOCUMENT is a required positional
-	// argument, so without this check "chatwright run help" would try to
-	// open a file literally named "help" instead of showing usage — the
-	// top-level `run` dispatcher in main.go treats "help" as its own
-	// command the same way.
-	if len(args) > 0 && args[0] == "help" {
+	// A bare "help", "-h" or "--help" as the first argument all mean the
+	// same thing here — mirroring main.go's own "help"/"-h"/"--help"
+	// dispatch and runArena's identical three-way case. Handling all three
+	// explicitly, before flag parsing, matters for two different reasons:
+	// "help" is not a flag at all, so without this check "chatwright run
+	// help" would try to open a file literally named "help" instead of
+	// showing usage (DOCUMENT is a required positional argument); and
+	// "-h"/"--help", while flag.FlagSet.Parse does recognize them itself,
+	// would otherwise print flag.FlagSet's own bare default usage (just the
+	// registered flags, no description, no DOCUMENT usage line) rather than
+	// this command's own printRunUsage — fs.Usage is set to printRunUsage
+	// below as a backstop for the rarer case of "-h"/"--help" appearing
+	// after another flag (e.g. "run --out DIR --help"), but args[0] is by
+	// far the common case and is handled here without even constructing a
+	// FlagSet.
+	if len(args) > 0 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
 		printRunUsage(stdout)
 		return 0
 	}
 
 	fs := flag.NewFlagSet("chatwright run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() { printRunUsage(stderr) }
 	outDir := fs.String("out", ".", "output directory for the run bundle")
+	write := fs.Bool("write", false, `write the built-in example's document and cassette into --out instead of running them (DOCUMENT must be "example")`)
 	// flag.FlagSet.Parse stops at the first non-flag argument, so a flag
 	// given after DOCUMENT (as this command's own usage line documents:
 	// "chatwright run DOCUMENT [--out DIR]") would otherwise be rejected as
-	// an extra positional argument — reorder --out (in either "--out DIR"
-	// or "--out=DIR" form) to the front first, wherever it appears.
-	if err := fs.Parse(reorderOutFlagFirst(args)); err != nil {
+	// an extra positional argument — reorder --out/--write (in either
+	// "--flag VALUE" or "--flag=VALUE" form, or bare for --write) to the
+	// front first, wherever they appear.
+	if err := fs.Parse(reorderRunFlagsFirst(args)); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
@@ -64,7 +74,42 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	docPath := fs.Arg(0)
 
+	if *write {
+		if docPath != exampleDocumentArg {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: --write is only valid with DOCUMENT %q\n\n", exampleDocumentArg)
+			printRunUsage(stderr)
+			return 2
+		}
+		if err := os.MkdirAll(*outDir, 0o755); err != nil {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
+			return 1
+		}
+		written, err := materializeExample(*outDir)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
+			return 1
+		}
+		_, _ = fmt.Fprintf(stdout, "wrote %s\n", written)
+		_, _ = fmt.Fprintf(stdout, "wrote %s\n", filepath.Join(*outDir, exampleCassetteRelPath))
+		_, _ = fmt.Fprintf(stdout, "edit the goal, then run: chatwright run %s\n", written)
+		return 0
+	}
+
 	ctx := context.Background()
+	// A real file on disk always wins over the built-in example: silently
+	// shadowing a document the user actually has is a confusing failure, and
+	// "example" is a legal filename. Only when nothing of that name exists
+	// does the argument mean "run the embedded worked example".
+	if docPath == exampleDocumentArg && !fileExists(docPath) {
+		materialized, cleanup, err := materializeExampleTemp()
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
+			return 1
+		}
+		defer cleanup()
+		docPath = materialized
+	}
+
 	provider := scenario.FileScenarioProvider{}
 	doc, report, err := provider.Load(ctx, docPath)
 	if err != nil {
@@ -207,12 +252,13 @@ func assembleRunBundle(doc *scenario.Document, built *scenario.Built, result run
 	return b, outcome, nil
 }
 
-// reorderOutFlagFirst moves a "--out"/"-out" flag (and its value, in either
-// "--out DIR" or "--out=DIR" form) to the front of args, leaving every
-// other argument — including DOCUMENT — in its original relative order.
-// See runRun's own comment on why this command needs it and the arena
-// subcommand (all flags, no positional argument) does not.
-func reorderOutFlagFirst(args []string) []string {
+// reorderRunFlagsFirst moves "--out"/"-out" (and its value, in either
+// "--out DIR" or "--out=DIR" form) and "--write"/"-write" (bare, or
+// "--write=BOOL") to the front of args, leaving every other argument —
+// including DOCUMENT — in its original relative order. See runRun's own
+// comment on why this command needs it and the arena subcommand (all
+// flags, no positional argument) does not.
+func reorderRunFlagsFirst(args []string) []string {
 	var flagArgs, rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -224,6 +270,10 @@ func reorderOutFlagFirst(args []string) []string {
 				flagArgs = append(flagArgs, args[i])
 			}
 		case strings.HasPrefix(a, "--out=") || strings.HasPrefix(a, "-out="):
+			flagArgs = append(flagArgs, a)
+		case a == "--write" || a == "-write":
+			flagArgs = append(flagArgs, a)
+		case strings.HasPrefix(a, "--write=") || strings.HasPrefix(a, "-write="):
 			flagArgs = append(flagArgs, a)
 		default:
 			rest = append(rest, a)
@@ -238,9 +288,31 @@ func printRunUsage(w io.Writer) {
 registered Go scenario needed — and write the resulting run bundle, ready
 to replay in the Studio player.
 
+DOCUMENT is a path to a scenario document, or the literal word "example" to
+run this CLI's own built-in worked example (GreetBot's language-onboarding
+scenario) instead — no files of your own, no network call and no API key
+required.
+
 Usage:
   chatwright run DOCUMENT [--out DIR]
+  chatwright run example [--out DIR]
+  chatwright run example --write [--out DIR]
 
 Flags:
-  --out DIR   output directory for the run bundle (default: ".")`)
+  --out DIR   output directory for the run bundle, or (with --write) for
+              the written example (default ".")
+  --write     write the built-in example's document and cassette into
+              --out instead of running them, so you can read the format,
+              change the goal, and re-run it (DOCUMENT must be "example")
+
+Examples:
+  chatwright run example
+      Run the built-in example straight away: no files, no network, no
+      API key. Writes greetbot-language-onboarding.chatwright.json into
+      "." — open it in the Studio player to see what happened.
+
+  chatwright run example --write
+      Write greetbot-language-onboarding.json (and its cassette) into "."
+      instead of running it. Edit the goal, then run:
+        chatwright run greetbot-language-onboarding.json`)
 }

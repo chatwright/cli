@@ -16,7 +16,10 @@ import (
 // greetbot conformance test replays — copied here so `chatwright run`'s own
 // tests exercise the real CLI end to end with zero network dependency,
 // without this repository needing a cross-repository path into runtime-go.
-const greetbotFixturePath = "testdata/greetbot-language-onboarding.json"
+// This is the very same copy example.go embeds as `chatwright run example`
+// (see example_test.go) — one committed fixture serving both the shipped
+// example and this file's own file-path tests.
+const greetbotFixturePath = "examples/greetbot-language-onboarding.json"
 
 func TestRunRequiresDocument(t *testing.T) {
 	var stdout, stderr bytes.Buffer
