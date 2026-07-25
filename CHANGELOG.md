@@ -5,7 +5,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
-## Unreleased
+## 0.2.0 — 2026-07-25
 
 ### Added
 
@@ -53,6 +53,31 @@ may break).
   fails with an explicit error rather than serving nothing. `--ui-dir` still
   takes precedence and makes no network call. Override the source with
   `--ui-url`.
+
+### Known limitations
+
+- `chatwright server start --ui` and `restart --ui` report success as soon as
+  the child process forks, before its UI download can succeed or fail. A
+  failed download therefore surfaces only in `server.log`, not in the exit
+  code. Foreground `serve --ui` fails visibly and synchronously, so prefer it
+  when first setting up. Tracked as
+  [cli#6](https://github.com/chatwright/cli/issues/6).
+- `POST /datastate/query` still answers `"unsupported"` for real database
+  execution — declared, never a faked pass. Canned rows via
+  `--datastate-fixtures` are the only verified path in this version.
+
+## 0.1.2 — 2026-07-24
+
+### Changed
+
+- Documentation only: SpecScore initialisation and a spec-first README
+  section. Cut to publish the Homebrew cask, which became an available
+  install path with this release once the GoReleaser token was in place.
+
+## 0.1.1 — 2026-07-23
+
+### Added
+
 - `chatwright arena run --config arena.yaml --out DIR` and
   `chatwright arena report --dir DIR`, fronting
   [`chatwright.dev/runtime/arena`](https://github.com/chatwright/runtime-go)
@@ -65,13 +90,10 @@ may break).
   `arena.example.yaml` documents the founder's own line-up (Ollama
   qwen3.6; LM Studio gemma-4-e4b, gemma-4-26b-a4b-qat, qwen3.6-27b) with
   right-sized context lengths.
-- **Depends on an unreleased `chatwright.dev/runtime` tag** — this PR is a
-  draft: gates ran locally against a `replace chatwright.dev/runtime =>
-  ../rtg-arena` pointing at
-  [runtime-go#7](https://github.com/chatwright/runtime-go/pull/7), which
-  is not yet merged/tagged. The committed `go.mod` carries no replace
-  directive; `go.mod`/`go.sum` need a `chatwright.dev/runtime` bump once
-  that PR merges and a runtime tag exists, before this can leave draft.
+### Changed
+
+- Depends on `chatwright.dev/runtime` v0.2.0 (arena package plus actor loop
+  fixes) and `chatwright.dev/sdk` v0.1.1.
 
 ## 0.1.0 — 2026-07-23
 
