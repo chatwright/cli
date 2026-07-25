@@ -28,11 +28,11 @@ func TestRunExampleEndToEnd(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("runRun() code = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "part status=completed") {
+	if !strings.Contains(stdout.String(), "completed") {
 		t.Errorf("stdout = %q, want it to report a completed part", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "outcome=verified") {
-		t.Errorf("stdout = %q, want a verified outcome (not judged) — the embedded document declares a verify block", stdout.String())
+	if !strings.Contains(stdout.String(), "verdict   verified") {
+		t.Errorf("stdout = %q, want a verified verdict (not judged) — the embedded document declares a verify block", stdout.String())
 	}
 
 	bundlePath := filepath.Join(outDir, "greetbot-language-onboarding.chatwright.json")
@@ -100,8 +100,8 @@ func TestRunExampleWriteThenRun(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("runRun(%q) code = %d, want 0; stdout=%q stderr=%q", docPath, code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "outcome=verified") {
-		t.Errorf("stdout = %q, want a verified outcome", stdout.String())
+	if !strings.Contains(stdout.String(), "verdict   verified") {
+		t.Errorf("stdout = %q, want a verified verdict", stdout.String())
 	}
 }
 
@@ -198,7 +198,7 @@ func TestRunExampleDoesNotShadowARealFile(t *testing.T) {
 	if !strings.Contains(stderr.String(), "unknown-member") {
 		t.Errorf("stderr = %q, want the user's file to be parsed and rejected by rule id", stderr.String())
 	}
-	if strings.Contains(stdout.String(), "part status=completed") {
+	if stdout.String() != "" {
 		t.Errorf("stdout = %q, want NO run at all — the embedded example must not have been substituted", stdout.String())
 	}
 }

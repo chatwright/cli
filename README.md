@@ -43,14 +43,48 @@ chatwright <command>
 
 Commands:
   platforms   List built-in messaging platform emulators
+  run         Execute a self-contained scenario document (chatwright run --help)
   arena       Run and report on the actor-model arena (chatwright arena help)
+  server      Run the server companion daemon (chatwright server help)
+  completion  Generate a bash/zsh/fish completion script (chatwright completion help)
   version     Print the CLI, runtime and sdk versions
   help        Show this help
+
+Try it now — no files, no network, no API key:
+  chatwright run example
 ```
 
 `chatwright version` reports the CLI's own version plus the resolved
 sdk/runtime module versions it was built against, and the supported
 run-bundle format id.
+
+### `chatwright run`
+
+Runs a self-contained [scenario document](https://chatwright.dev/formats/scenario-document/v1)
+and writes the resulting run bundle — live progress on stderr while it runs,
+a scannable summary (or `--json`) once it's done:
+
+```sh
+chatwright run example                 # the built-in worked example — try this first
+chatwright run my-scenario.json --out ./runs
+chatwright run my-scenario.json --json --quiet   # CI-friendly: one JSON object, nothing else
+chatwright run my-scenario.json --verbose        # every actor turn, not just task boundaries
+```
+
+Colour and the live progress line both respect a real terminal, `NO_COLOR`
+and the `CLICOLOR`/`CLICOLOR_FORCE` conventions, and degrade to plain,
+newline-terminated lines once piped or redirected. See `chatwright run --help`
+for the full flag reference, the `--json` shape, and this command's exit
+codes (0 verified/judged, 1 not verified, 2 usage error, 3 actor
+unavailable, 130 interrupted).
+
+### Shell completion
+
+```sh
+chatwright completion bash > /usr/local/etc/bash_completion.d/chatwright
+chatwright completion zsh  > "${fpath[1]}/_chatwright"
+chatwright completion fish > ~/.config/fish/completions/chatwright.fish
+```
 
 ### Actor-model arena
 

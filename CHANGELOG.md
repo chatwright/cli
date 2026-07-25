@@ -5,6 +5,66 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
+## Unreleased
+
+CLI UX overhaul: `chatwright run` had genuinely good `--help` text but a
+bare runtime experience — no colour, no live progress, a flat prose summary
+line, and its own bundled example tripped its own validation warning. This
+release consumes `runengine.Run.OnProgress` for the first time anywhere in
+this repository.
+
+### Added
+
+- **Live progress.** `chatwright run` now shows what the actor is doing as
+  it happens — part/task position, step count against its budget, elapsed
+  time, budget burn, and a derived "acted: executed/no effect/…" indicator
+  per turn — on stderr, throttled to task boundaries only when piped
+  (`--verbose` for every turn). A real terminal gets a single redrawn
+  status line; a pipe or log file gets plain, newline-terminated lines,
+  never a stray carriage return.
+- `--json`: emit the run outcome as one JSON object on stdout (documented
+  shape in `chatwright run --help`), human output suppressed. Never
+  suppressed by `--quiet`.
+- `--quiet`: silence on a successful run; a failure or an interrupted run
+  is still reported in full — "errors only".
+- `--verbose`: every actor-loop iteration on stderr, not just task/part
+  boundaries. Mutually exclusive with `--quiet` (a usage error, exit 2).
+- Ctrl-C now finalises the run rather than losing it: an interrupted
+  ai-goal part is captured as an ordinary actor-unavailable-shaped result,
+  the run bundle is still written, and `chatwright run` reports what was
+  kept and exits `130` (the conventional "terminated by SIGINT" code). A
+  second Ctrl-C terminates immediately, as if no handler were installed.
+  Only ai-goal parts are interruptible this way — a purely deterministic
+  part has no earlier interception point without a `chatwright.dev/runtime`
+  change.
+- `chatwright completion bash|zsh|fish`: hand-written completion scripts
+  for all three shells, no framework dependency.
+- Colour and symbols: TTY detection, the `NO_COLOR` and
+  `CLICOLOR`/`CLICOLOR_FORCE` conventions, and a UTF-8-vs-ASCII fallback
+  for the ✓/✗/⚠ status symbols — all in a new dependency-free
+  `internal/term` package.
+- `chatwright run --help` now documents this command's own exit codes (0,
+  1, 2, 3, 130).
+
+### Changed
+
+- The flat `<id>: part status=<status>, outcome=<verdict>: <detail>`
+  prose line is replaced by a scannable, aligned summary block (status
+  symbol, verdict, human-readable duration, token/cost usage, and the
+  bundle path with what to do with it next).
+- A rejected scenario document's validation errors are now presented as a
+  numbered, readable list (pointer + rule id + message per problem) rather
+  than a wall of text — still built only from `Issue.Pointer`/`Code`/
+  `Message`, so the format's own "never echo a secret value" guarantee is
+  preserved.
+
+### Fixed
+
+- The CLI's own bundled `chatwright run example` document now declares a
+  run-level `ceiling`, so a first-time user's very first `chatwright run
+  example` no longer prints the CLI's own `no-run-ceiling` validation
+  warning about its own demo.
+
 ## 0.6.0 — 2026-07-25
 
 ### Changed

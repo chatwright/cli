@@ -76,11 +76,11 @@ func TestRunEndToEndAgainstGreetbotFixture(t *testing.T) {
 		t.Fatalf("runRun() code = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
-	if !strings.Contains(stdout.String(), "part status=completed") {
+	if !strings.Contains(stdout.String(), "completed") {
 		t.Errorf("stdout = %q, want it to report a completed part", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "outcome=verified") {
-		t.Errorf("stdout = %q, want it to report a verified outcome (not judged) — the document declares a verify block", stdout.String())
+	if !strings.Contains(stdout.String(), "verdict   verified") {
+		t.Errorf("stdout = %q, want it to report a verified verdict (not judged) — the document declares a verify block", stdout.String())
 	}
 
 	bundlePath := filepath.Join(outDir, "greetbot-language-onboarding.chatwright.json")
@@ -243,8 +243,8 @@ func TestRunReportsActorUnavailableOnCassetteCacheMiss(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "outcome=actor unavailable") {
-		t.Errorf("stdout = %q, want an \"outcome=actor unavailable\" line", out)
+	if !strings.Contains(out, "verdict   actor unavailable") {
+		t.Errorf("stdout = %q, want an \"actor unavailable\" verdict", out)
 	}
 	if !strings.Contains(out, "replay cache miss") {
 		t.Errorf("stdout = %q, want the actual actor.ErrCassetteCacheMiss text surfaced, not swallowed", out)
@@ -276,11 +276,11 @@ func TestRunReportsGenuineVerificationFailureDistinctFromActorFailure(t *testing
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "part status=completed") {
+	if !strings.Contains(out, "completed") {
 		t.Errorf("stdout = %q, want the actor to have run to completion — this is a bot-behaviour failure, not a harness failure", out)
 	}
-	if !strings.Contains(out, "outcome=not verified") {
-		t.Errorf("stdout = %q, want \"outcome=not verified\"", out)
+	if !strings.Contains(out, "verdict   not verified") {
+		t.Errorf("stdout = %q, want a \"not verified\" verdict", out)
 	}
 	if !strings.Contains(out, "journal evidence incomplete") {
 		t.Errorf("stdout = %q, want the unmet-expectation detail", out)
@@ -392,4 +392,239 @@ func TestActorFailureFromParts(t *testing.T) {
 			t.Errorf("cacheMiss = true, want false — this was a different actor error, not actor.ErrCassetteCacheMiss")
 		}
 	})
+}
+
+// --- UX-overhaul tests: --json, --quiet, --verbose, the "no-run-ceiling"
+// warning fix, and exit-code priority. ---
+
+// TestRunJSONShape drives the real greetbot fixture end to end with
+// --json and decodes stdout as JSON — proving --json's own documented
+// shape holds for a real, successful, verified run, and that stdout
+// carries NOTHING but that one JSON object (no progress line, no human
+// summary bleeding in before or after it).
+func TestRunJSONShape(t *testing.T) {
+	outDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{greetbotFixturePath, "--out", outDir, "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runRun() code = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	var res runJSONResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v; stdout = %q", err, stdout.String())
+	}
+	if res.DocumentID != "greetbot-language-onboarding" {
+		t.Errorf("DocumentID = %q, want %q", res.DocumentID, "greetbot-language-onboarding")
+	}
+	if res.Verdict != "verified" {
+		t.Errorf("Verdict = %q, want %q", res.Verdict, "verified")
+	}
+	if res.PartStatus != "completed" {
+		t.Errorf("PartStatus = %q, want %q", res.PartStatus, "completed")
+	}
+	if res.Interrupted {
+		t.Error("Interrupted = true, want false")
+	}
+	if res.BundlePath == "" {
+		t.Error("BundlePath is empty, want the written bundle's path")
+	}
+	if res.Usage.CallCount == 0 {
+		t.Error("Usage.CallCount = 0, want the real cassette-recorded call count")
+	}
+
+	// stdout must be exactly the JSON object (plus its own trailing
+	// newline from json.Encoder) — no human summary line mixed in.
+	if strings.Contains(stdout.String(), "RUN greetbot") {
+		t.Errorf("stdout = %q, want NO human summary text alongside --json's own output", stdout.String())
+	}
+}
+
+// TestRunJSONActorUnavailableShape drives the same cassette-cache-miss
+// reproduction TestRunReportsActorUnavailableOnCassetteCacheMiss uses, but
+// with --json, checking the failure path's own JSON fields — in
+// particular actorCacheMiss and the non-zero exit code, which a CI
+// consumer would branch on without ever parsing human text.
+func TestRunJSONActorUnavailableShape(t *testing.T) {
+	docPath := writeMutatedGreetbotFixture(t, mutateSuccessCriteriaText)
+	outDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{docPath, "--out", outDir, "--json"}, &stdout, &stderr)
+	if code != exitActorUnavailable {
+		t.Fatalf("runRun() code = %d, want %d", code, exitActorUnavailable)
+	}
+
+	var res runJSONResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v; stdout = %q", err, stdout.String())
+	}
+	if res.Verdict != "actor-unavailable" {
+		t.Errorf("Verdict = %q, want %q", res.Verdict, "actor-unavailable")
+	}
+	if !res.ActorCacheMiss {
+		t.Error("ActorCacheMiss = false, want true")
+	}
+	if !strings.Contains(res.Detail, "replay cache miss") {
+		t.Errorf("Detail = %q, want it to mention the replay cache miss", res.Detail)
+	}
+}
+
+// TestRunQuietSuppressesSuccessButNotFailure is quiet's own contract test:
+// silence (empty stdout AND stderr) on an unremarkable success, but the
+// same output as without --quiet on a genuine failure — "errors only".
+func TestRunQuietSuppressesSuccessButNotFailure(t *testing.T) {
+	t.Run("success: both streams empty", func(t *testing.T) {
+		outDir := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		code := runRun([]string{greetbotFixturePath, "--out", outDir, "--quiet"}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("runRun() code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		if stdout.String() != "" {
+			t.Errorf("stdout = %q, want empty on a quiet successful run", stdout.String())
+		}
+		if stderr.String() != "" {
+			t.Errorf("stderr = %q, want empty (no progress, no warnings) on a quiet successful run", stderr.String())
+		}
+		// The bundle must still have been written — --quiet silences
+		// reporting, never the actual work.
+		if _, err := os.Stat(filepath.Join(outDir, "greetbot-language-onboarding.chatwright.json")); err != nil {
+			t.Errorf("bundle not written under --quiet: %v", err)
+		}
+	})
+
+	t.Run("failure: still reported despite --quiet", func(t *testing.T) {
+		docPath := writeMutatedGreetbotFixture(t, mutateVerifyExpectationToNeverMatch)
+		outDir := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		code := runRun([]string{docPath, "--out", outDir, "--quiet"}, &stdout, &stderr)
+		if code != exitVerificationFailed {
+			t.Fatalf("runRun() code = %d, want %d", code, exitVerificationFailed)
+		}
+		if !strings.Contains(stdout.String(), "verdict   not verified") {
+			t.Errorf("stdout = %q, want the failure still reported despite --quiet", stdout.String())
+		}
+	})
+}
+
+// TestRunQuietNeverSuppressesJSON proves --json always wins: even a
+// perfectly successful run with --quiet --json still emits the JSON
+// object on stdout, since that IS the machine-readable answer, never
+// "chatter" --quiet is meant to silence.
+func TestRunQuietNeverSuppressesJSON(t *testing.T) {
+	outDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{greetbotFixturePath, "--out", outDir, "--quiet", "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runRun() code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	var res runJSONResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("--quiet --json: stdout = %q did not decode as JSON: %v", stdout.String(), err)
+	}
+	if res.Verdict != "verified" {
+		t.Errorf("Verdict = %q, want %q", res.Verdict, "verified")
+	}
+	if stderr.String() != "" {
+		t.Errorf("stderr = %q, want empty — --quiet still silences stderr progress/warnings", stderr.String())
+	}
+}
+
+// TestRunVerboseShowsPerIterationProgress proves --verbose surfaces
+// per-turn detail on stderr — the individual actor-loop iterations a
+// non-verbose piped run deliberately coarsens away to task boundaries only
+// (see progressReporter.renderTask).
+func TestRunVerboseShowsPerIterationProgress(t *testing.T) {
+	outDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{greetbotFixturePath, "--out", outDir, "--verbose"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runRun() code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "step ") {
+		t.Errorf("stderr = %q, want per-iteration \"step N\" lines under --verbose", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "acted:") {
+		t.Errorf("stderr = %q, want a derived \"acted:\" indicator under --verbose", stderr.String())
+	}
+}
+
+// TestRunQuietAndVerboseAreMutuallyExclusive guards the explicit usage
+// error runRun returns for a nonsensical combination, rather than letting
+// one flag silently win over the other.
+func TestRunQuietAndVerboseAreMutuallyExclusive(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{greetbotFixturePath, "--quiet", "--verbose"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("runRun() code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "mutually exclusive") {
+		t.Errorf("stderr = %q, want a mutually-exclusive usage error", stderr.String())
+	}
+}
+
+// TestRunExampleDeclaresItsOwnCeiling guards item 6 of the UX brief: the
+// CLI's own bundled example must never emit its own "no-run-ceiling"
+// warning — a first-time user's first `chatwright run example` must not
+// see a warning about the CLI's own demo.
+func TestRunExampleDeclaresItsOwnCeiling(t *testing.T) {
+	outDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := runRun([]string{exampleDocumentArg, "--out", outDir}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runRun() code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "no-run-ceiling") {
+		t.Errorf("stderr = %q, want NO no-run-ceiling warning from the CLI's own bundled example", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "run ceiling:") {
+		t.Errorf("stderr = %q, want the run-ceiling header line, since the example now declares one", stderr.String())
+	}
+}
+
+// TestRunExitCodePriority is runExitCode's own non-vacuous truth table:
+// interrupted outranks actor-unavailable outranks not-verified outranks
+// success, including the "somehow more than one applies" cases that would
+// be impossible to provoke through a real run.
+func TestRunExitCodePriority(t *testing.T) {
+	cases := []struct {
+		name        string
+		interrupted bool
+		outcome     runOutcome
+		want        int
+	}{
+		{"success", false, runOutcome{partStatus: "completed", verified: true}, 0},
+		{"judged success", false, runOutcome{partStatus: "completed", judged: true}, 0},
+		{"not verified", false, runOutcome{partStatus: "completed", verified: false}, exitVerificationFailed},
+		{"actor unavailable", false, runOutcome{actorFailed: true}, exitActorUnavailable},
+		{"interrupted outranks actor unavailable", true, runOutcome{actorFailed: true}, exitInterrupted},
+		{"interrupted outranks a real success", true, runOutcome{partStatus: "completed", verified: true}, exitInterrupted},
+		{"actor unavailable outranks not-verified", false, runOutcome{actorFailed: true, partStatus: "completed", verified: false}, exitActorUnavailable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := runExitCode(tc.interrupted, tc.outcome); got != tc.want {
+				t.Errorf("runExitCode(%v, %+v) = %d, want %d", tc.interrupted, tc.outcome, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDetectProfile proves detectProfile correctly treats a non-*os.File
+// writer (every test in this package, and any real destination that isn't
+// a terminal file — a pipe, a network connection) as non-interactive, and
+// so never colourised — the property TestRunEndToEndAgainstGreetbotFixture
+// and friends implicitly depend on for their plain-substring assertions to
+// be meaningful regardless of ambient NO_COLOR/CLICOLOR_FORCE state on the
+// machine running the tests.
+func TestDetectProfile(t *testing.T) {
+	var buf bytes.Buffer
+	p := detectProfile(&buf, func(string) string { return "" })
+	if p.Interactive {
+		t.Error("Interactive = true for a bytes.Buffer, want false")
+	}
+	if p.Color {
+		t.Error("Color = true for a non-interactive stream with no env override, want false")
+	}
 }
