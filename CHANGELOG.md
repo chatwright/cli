@@ -5,7 +5,7 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
-## Unreleased
+## 0.4.0 — 2026-07-25
 
 ### Added
 
@@ -31,6 +31,21 @@ may break).
   `chatwright run help` already worked correctly before this change.
 - `chatwright --help` now points new users at `chatwright run example`
   directly, alongside the existing command list.
+- `chatwright run example` no longer shadows a real file: the literal
+  DOCUMENT value `example` selects the built-in worked example only when no
+  regular file of that name exists, so a document a user actually has is
+  always loaded in preference to it.
+
+### Known limitations
+
+- Editing the goal text of the document written by
+  `chatwright run example --write` and re-running it will usually fail with
+  a cassette cache miss. The bundled cassette is a fixed recording keyed by
+  a hash that includes the goal's own text, so changing the goal invalidates
+  it. Running the written document *unchanged* works. Editing the goal for
+  real needs a live model provider; the underlying key over-specification is
+  the subject of `spec/ideas/exploration-to-regression.md` in the standard
+  repository.
 
 ## 0.3.0 — 2026-07-25
 
