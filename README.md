@@ -24,8 +24,7 @@ Windows (PowerShell):
 irm https://chatwright.dev/install.ps1 | iex
 ```
 
-Homebrew (macOS — not yet published; the cask activates with a future
-release):
+Homebrew (macOS):
 
 ```sh
 brew install --cask chatwright/tap/chatwright
