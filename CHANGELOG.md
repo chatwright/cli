@@ -5,6 +5,27 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/spec/v2.0.0.html) (pre-1.0: minor versions
 may break).
 
+## Unreleased
+
+### Added
+
+- `chatwright run DOCUMENT [--out DIR]`: execute a self-contained scenario
+  document (`https://chatwright.dev/formats/scenario-document/v1`,
+  `chatwright.dev/runtime/scenario`) with no manifest and no registered Go
+  scenario — load, validate, resolve (secrets, an example bot or an HTTP
+  bot transport, a cassette provider), run, and write the resulting
+  `.chatwright.json` run bundle to `--out` (default `.`). Prints a
+  one-line outcome: the executed part's status and, when the document
+  declares a `verify` block, its journal-verified verdict and detail
+  string — never printed as "verified" when the document declares no
+  `verify` block, only "judged" (the format's own judged-versus-verified
+  rule).
+
+### Changed
+
+- Depends on `chatwright.dev/runtime` v0.4.0, which adds the
+  `chatwright.dev/runtime/scenario` package this command is built on.
+
 ## 0.2.0 — 2026-07-25
 
 ### Added
