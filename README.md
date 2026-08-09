@@ -42,13 +42,15 @@ go install chatwright.dev/cli/cmd/chatwright@latest
 chatwright <command>
 
 Commands:
-  platforms   List built-in messaging platform emulators
-  run         Execute a self-contained scenario document (chatwright run --help)
-  arena       Run and report on the actor-model arena (chatwright arena help)
-  server      Run the server companion daemon (chatwright server help)
-  completion  Generate a bash/zsh/fish completion script (chatwright completion help)
-  version     Print the CLI, runtime and sdk versions
-  help        Show this help
+  platforms     List built-in messaging platform emulators
+  run           Execute a self-contained scenario document (chatwright run --help)
+  arena         Run and report on the actor-model arena (chatwright arena help)
+  server        Run the server companion daemon (chatwright server help)
+  completion    Generate a bash/zsh/fish completion script (chatwright completion help)
+  self-update   Update the installed binary in place (chatwright self-update --help);
+                also available as "chatwright update"
+  version       Print the CLI, runtime and sdk versions
+  help          Show this help
 
 Try it now — no files, no network, no API key:
   chatwright run example
@@ -77,6 +79,35 @@ newline-terminated lines once piped or redirected. See `chatwright run --help`
 for the full flag reference, the `--json` shape, and this command's exit
 codes (0 verified/judged, 1 not verified, 2 usage error, 3 actor
 unavailable, 130 interrupted).
+
+### `chatwright self-update`
+
+Updates the installed `chatwright` binary in place, or reports whether a
+newer release is available — also available as `chatwright update`:
+
+```sh
+chatwright self-update --check                # report availability only; never modifies
+chatwright self-update --check --format json  # machine-readable verdict
+chatwright self-update --yes                  # skip the confirmation prompt (for scripts/CI/agents)
+chatwright self-update --dry-run              # print the exact asset URL a real run would fetch
+chatwright self-update --version v0.4.0       # install a specific release (manual installs only)
+chatwright update                             # alias for self-update
+```
+
+Every safety decision — whether this install may be replaced at all,
+checksum verification before extraction, the atomic swap — comes from
+[`github.com/strongo/selfupdate`](https://github.com/strongo/selfupdate); see
+[spec/features/self-update](spec/features/self-update/README.md) for what is
+chatwright's own configuration versus the shared library's behavior. A
+Homebrew-installed binary is redirected to `brew upgrade --cask chatwright`
+and is never overwritten directly; a manual install (the install script, or
+`go install`) is what actually gets replaced. Without `--yes` and without an
+interactive terminal attached, self-update refuses rather than blocking on
+input. See `chatwright self-update --help` for the full flag reference and
+this command's exit codes (0 success — including a completed `--check`
+whatever its verdict; 1 a runtime failure no flag fixes; 2 a usage error,
+including a confirmation that was needed but neither `--yes` nor a terminal
+was available).
 
 ### Shell completion
 

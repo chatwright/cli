@@ -104,5 +104,11 @@ func TestCompletionScriptsCoverEveryCommand(t *testing.T) {
 				t.Errorf("%s script is missing run flag %q", shellName, flag)
 			}
 		}
+		for _, flag := range selfUpdateFlags {
+			bare := strings.TrimPrefix(flag, "--")
+			if !strings.Contains(script, bare) {
+				t.Errorf("%s script is missing self-update flag %q", shellName, flag)
+			}
+		}
 	}
 }
