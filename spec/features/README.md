@@ -10,6 +10,7 @@ Feature specifications for this project.
 
 | Feature | Status | Description |
 |---------|--------|-------------|
+| [Self-Update](self-update/README.md) | Draft | `chatwright self-update` (alias `chatwright update`) brings a running |
 
 ## Open Questions
 

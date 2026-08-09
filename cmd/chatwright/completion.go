@@ -6,8 +6,8 @@
 // plain hand-written shell text with no code-generation framework behind
 // them (no cobra, no urfave/cli) — the same "small internal helper is
 // right, a framework is not" line the brief draws for terminal capability
-// detection applies here too. Keeping the three vocab lists
-// (topLevelCommands, runFlags, arenaSubcommands, serverSubcommands) as the
+// detection applies here too. Keeping the vocab lists (topLevelCommands,
+// runFlags, arenaSubcommands, serverSubcommands, selfUpdateFlags) as the
 // single source of truth for all three shells is this file's own
 // discipline against drift between them; there is no schema forcing it,
 // only TestCompletionScriptsCoverEveryCommand checking it.
@@ -19,18 +19,23 @@ import (
 	"strings"
 )
 
-// topLevelCommands, runFlags, arenaSubcommands and serverSubcommands are
-// this file's single source of truth for what every shell's completion
-// script offers — kept here, not duplicated per shell, precisely so
-// adding a command/flag in main.go/run.go/arena.go/server.go later has one
-// obvious place to also update (and one test,
+// topLevelCommands, runFlags, arenaSubcommands, serverSubcommands and
+// selfUpdateFlags are this file's single source of truth for what every
+// shell's completion script offers — kept here, not duplicated per shell,
+// precisely so adding a command/flag in main.go/run.go/arena.go/server.go/
+// selfupdate.go later has one obvious place to also update (and one test,
 // TestCompletionScriptsCoverEveryCommand, that fails loudly if it isn't).
 var (
-	topLevelCommands  = []string{"platforms", "run", "arena", "server", "version", "help", "completion"}
+	topLevelCommands  = []string{"platforms", "run", "arena", "server", "version", "help", "completion", "self-update", "update"}
 	runFlags          = []string{"--out", "--write", "--json", "--quiet", "--verbose", "--help"}
 	arenaSubcommands  = []string{"run", "report", "help"}
 	serverSubcommands = []string{"serve", "start", "stop", "restart", "help"}
 	completionShells  = []string{"bash", "zsh", "fish"}
+	// selfUpdateFlags completes both "self-update" and its "update" alias
+	// (see main.go's dispatch and selfupdate.go). Only the canonical
+	// "--flag" spellings are completed, matching runFlags' own precedent —
+	// the short "-y" alias for --yes is not offered here either.
+	selfUpdateFlags = []string{"--check", "--yes", "--version", "--allow-downgrade", "--dry-run", "--format"}
 )
 
 // runCompletion implements `chatwright completion SHELL`.
@@ -74,9 +79,11 @@ Usage:
   chatwright completion fish > ~/.config/fish/completions/chatwright.fish
 
 Completes: top-level commands, run's own flags (--out/--write/--json/
---quiet/--verbose/--help) and the literal "example" DOCUMENT value, and
-the arena/server/completion subcommand names. It does not complete
-file paths beyond the shell's own default filename completion.`)
+--quiet/--verbose/--help) and the literal "example" DOCUMENT value, the
+arena/server/completion subcommand names, and self-update's own flags
+(--check/--yes/--version/--allow-downgrade/--dry-run/--format) under both
+"self-update" and its "update" alias. It does not complete file paths
+beyond the shell's own default filename completion.`)
 }
 
 // bashCompletionScript is a hand-written bash completion function — no
@@ -115,11 +122,14 @@ _chatwright() {
 			COMPREPLY=($(compgen -W "%s" -- "$cur"))
 		fi
 		;;
+	self-update|update)
+		COMPREPLY=($(compgen -W "%s" -- "$cur"))
+		;;
 	esac
 }
 complete -F _chatwright chatwright
 `, strings.Join(topLevelCommands, " "), strings.Join(runFlags, " "), strings.Join(arenaSubcommands, " "),
-		strings.Join(serverSubcommands, " "), strings.Join(completionShells, " "))
+		strings.Join(serverSubcommands, " "), strings.Join(completionShells, " "), strings.Join(selfUpdateFlags, " "))
 }
 
 // zshCompletionScript wraps bashCompletionScript via bashcompinit — the
@@ -154,6 +164,9 @@ func fishCompletionScript() string {
 	}
 	for _, s := range completionShells {
 		_, _ = fmt.Fprintf(&b, "complete -c chatwright -f -n '__fish_seen_subcommand_from completion' -a %s\n", s)
+	}
+	for _, f := range selfUpdateFlags {
+		_, _ = fmt.Fprintf(&b, "complete -c chatwright -f -n '__fish_seen_subcommand_from self-update update' -l %s\n", strings.TrimPrefix(f, "--"))
 	}
 	return b.String()
 }

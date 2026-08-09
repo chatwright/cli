@@ -112,6 +112,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runServer(args[1:], stdout, stderr)
 	case "completion":
 		return runCompletion(args[1:], stdout, stderr)
+	case "self-update", "update":
+		return runSelfUpdate(args[1:], os.Stdin, stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "chatwright: unknown command %q\n\n", args[0])
 		printUsage(stderr)
@@ -141,13 +143,15 @@ Usage:
   chatwright <command>
 
 Commands:
-  platforms   List built-in messaging platform emulators
-  run         Execute a self-contained scenario document (chatwright run --help)
-  arena       Run and report on the actor-model arena (chatwright arena help)
-  server      Run the server companion daemon (chatwright server help)
-  completion  Generate a bash/zsh/fish completion script (chatwright completion help)
-  version     Print the CLI, runtime and sdk versions
-  help        Show this help
+  platforms     List built-in messaging platform emulators
+  run           Execute a self-contained scenario document (chatwright run --help)
+  arena         Run and report on the actor-model arena (chatwright arena help)
+  server        Run the server companion daemon (chatwright server help)
+  completion    Generate a bash/zsh/fish completion script (chatwright completion help)
+  self-update   Update the installed binary in place (chatwright self-update --help);
+                also available as "chatwright update"
+  version       Print the CLI, runtime and sdk versions
+  help          Show this help
 
 Try it now — no files, no network, no API key:
   chatwright run example`)
