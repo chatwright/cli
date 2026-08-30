@@ -30,6 +30,11 @@ jobs:
       # to a new major. A tag push fixes the version anyway, so this is a
       # belt-and-braces default, same as ci.yml's.
       allow_major_version_bump: false
+      # Block publication unless the macOS build is genuinely signed, notarized,
+      # AND executable. Without this the preflight gate never runs: specscore-cli
+      # v0.37.10 shipped a binary macOS SIGKILLs, with a green release.
+      # See https://github.com/strongo/cicd/issues/66
+      require_notarized_macos: true
     secrets:
       # Cross-repo PAT (classic, public_repo scope) for pushing the Homebrew
       # cask manifest to chatwright/homebrew-tap. Forwarded to GoReleaser as
