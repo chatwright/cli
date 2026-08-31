@@ -29,6 +29,11 @@ jobs:
     permissions:
       contents: write
     with:
+      # Must be >= go.mod's `go` directive (currently 1.27.0). The shared
+      # release job runs its `go mod tidy` before-hook under this setup-go
+      # version with GOTOOLCHAIN=local, so leaving it unset (default '1.26')
+      # fails with "go.mod requires go >= 1.27.0" before the build starts.
+      go_version: '1.27.0'
       # Pre-1.0 (docs/release-process.md "Version policy"): never auto-bump
       # to a new major. A tag push fixes the version anyway, so this is a
       # belt-and-braces default, same as ci.yml's.
