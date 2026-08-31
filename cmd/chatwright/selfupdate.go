@@ -41,18 +41,24 @@ const selfUpdateRepository = "chatwright/cli"
 // asset-naming convention.
 const selfUpdateBinaryName = "chatwright"
 
-// selfUpdateUndeterminedVersions lists every string cliVersion() (main.go)
-// can report that does not identify a real release. fallbackVersion
-// ("devel") is what a plain `go build` inside this repository, or any
-// build-info lookup that comes up empty, falls back to. "(devel)" is
-// declared too, defensively: it's what the Go toolchain itself stamps on
-// debug.BuildInfo.Main.Version for an un-tagged source-tree build, and
-// cliVersion already normalizes it away before it would ever reach this
-// package's Config (see cliVersion's own `!= "(devel)"` guard) — but an
+// undeterminedVersion is the placeholder github.com/strongo/buildinfo's own
+// Info.Version carries when neither link-time stamping nor
+// debug.ReadBuildInfo() could resolve a real version (see buildinfo.Info's
+// doc comment) — e.g. a plain `go build` inside this repository with no
+// build-info fallback available.
+const undeterminedVersion = "dev"
+
+// selfUpdateUndeterminedVersions lists every string cliBuildInfo().Short()
+// (main.go) can report that does not identify a real release.
+// undeterminedVersion ("dev") is buildinfo's own placeholder, above.
+// "(devel)" is declared too, defensively: it's what the Go toolchain itself
+// stamps on debug.BuildInfo.Main.Version for an un-tagged source-tree build,
+// and buildinfo.Get already normalizes it away before it would ever reach
+// this package's Config (see buildinfo's own `!= "(devel)"` guard) — but an
 // undeclared placeholder gets compared as a real version and reports an
 // update available FROM a version that was never released, so both are
 // declared here rather than relying on that normalization never changing.
-var selfUpdateUndeterminedVersions = []string{fallbackVersion, "(devel)"}
+var selfUpdateUndeterminedVersions = []string{undeterminedVersion, "(devel)"}
 
 // selfUpdateConfig builds this CLI's own selfupdate.Config: everything
 // selfupdate.Config's own doc comment calls "consumer-configured-identity"
@@ -65,7 +71,7 @@ func selfUpdateConfig() selfupdate.Config {
 	return selfupdate.Config{
 		BinaryName:           selfUpdateBinaryName,
 		Repository:           selfUpdateRepository,
-		CurrentVersion:       cliVersion(),
+		CurrentVersion:       cliBuildInfo().Short(),
 		UndeterminedVersions: selfUpdateUndeterminedVersions,
 		// The only distribution channel .goreleaser.yml configures beyond
 		// plain release archives (see its own "Homebrew cask" comment
@@ -84,10 +90,11 @@ func selfUpdateConfig() selfupdate.Config {
 			{GOOS: "darwin", GOARCH: "arm64"},
 			{GOOS: "windows", GOARCH: "amd64"},
 		},
-		// `chatwright version` (main.go) prints "chatwright <version>" as
-		// its first line; VersionProbeArgs' output only needs to CONTAIN
-		// the target version (see selfupdate's own verifyBinaryVersion),
-		// which that line already does.
+		// `chatwright version` (main.go) prints buildinfo.Info.Long(),
+		// "chatwright <version> (<commit>) <date>", as its first line;
+		// VersionProbeArgs' output only needs to CONTAIN the target version
+		// (see selfupdate's own verifyBinaryVersion), which that line
+		// already does.
 		VersionProbeArgs: []string{"version"},
 	}
 }

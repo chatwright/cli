@@ -15,18 +15,8 @@ import (
 	"chatwright.dev/runtime/telegram"
 	"chatwright.dev/runtime/whatsapp"
 	"chatwright.dev/sdk"
+	"github.com/strongo/buildinfo"
 )
-
-// version is this CLI's own release version, injected by GoReleaser via
-// -ldflags "-X main.version={{.Version}}" at release-build time. When empty
-// (a `go install chatwright.dev/cli/cmd/chatwright@vX.Y.Z` build, or a plain
-// `go build` inside this repository), cliVersion falls back to the module
-// version recorded in the binary's build info.
-var version string
-
-// fallbackVersion is used when neither the injected version nor build info
-// carries a module version (e.g. a plain `go build` inside the repo).
-const fallbackVersion = "devel"
 
 // sdkModulePath and runtimeModulePath name the two Chatwright modules whose
 // resolved versions `chatwright version` reports alongside the CLI's own —
@@ -38,14 +28,13 @@ const (
 	runtimeModulePath = "chatwright.dev/runtime"
 )
 
-func cliVersion() string {
-	if version != "" {
-		return version
-	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
-		return bi.Main.Version
-	}
-	return fallbackVersion
+// cliBuildInfo resolves this CLI's own build identity: the injected
+// -ldflags -X values from GoReleaser (see .goreleaser.yml), falling back to
+// runtime/debug.ReadBuildInfo() for a `go install`/`go build` binary. See
+// github.com/strongo/buildinfo — every CLI in this fleet shares this one
+// implementation instead of hand-rolling its own version plumbing.
+func cliBuildInfo() buildinfo.Info {
+	return buildinfo.Get("chatwright")
 }
 
 // depVersion returns the resolved version of the named module dependency from
@@ -96,7 +85,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
-	case "version", "--version":
+	case "--version", "-v":
+		_, _ = fmt.Fprintln(stdout, cliBuildInfo().Short())
+		return 0
+	case "version":
 		printVersion(stdout)
 		return 0
 	case "platforms":
@@ -121,12 +113,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// printVersion prints the CLI's own version followed by the resolved
+// printVersion prints the CLI's own build identity (name, version, commit,
+// date — see github.com/strongo/buildinfo) followed by the resolved
 // sdk/runtime module versions from build info — see sdkModulePath's doc
 // comment. A dependency line is omitted when the version cannot be
 // determined, rather than printing an empty placeholder.
 func printVersion(w io.Writer) {
-	_, _ = fmt.Fprintf(w, "chatwright %s\n", cliVersion())
+	_, _ = fmt.Fprintln(w, cliBuildInfo().Long())
 	if v := depVersion(runtimeModulePath); v != "" {
 		_, _ = fmt.Fprintf(w, "runtime: %s %s\n", runtimeModulePath, v)
 	}

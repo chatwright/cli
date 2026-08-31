@@ -52,22 +52,22 @@ func TestSelfUpdateConfig_Identity(t *testing.T) {
 	if cfg.Repository != "chatwright/cli" {
 		t.Errorf("Repository = %q, want chatwright/cli (the vanity module path chatwright.dev/cli does not name the GitHub repo)", cfg.Repository)
 	}
-	if cfg.CurrentVersion != cliVersion() {
-		t.Errorf("CurrentVersion = %q, want cliVersion() = %q (must reuse the CLI's own version plumbing, not a duplicate)", cfg.CurrentVersion, cliVersion())
+	if cfg.CurrentVersion != cliBuildInfo().Short() {
+		t.Errorf("CurrentVersion = %q, want cliBuildInfo().Short() = %q (must reuse the CLI's own version plumbing, not a duplicate)", cfg.CurrentVersion, cliBuildInfo().Short())
 	}
 	if len(cfg.VersionProbeArgs) != 1 || cfg.VersionProbeArgs[0] != "version" {
-		t.Errorf("VersionProbeArgs = %v, want [version] (chatwright version prints \"chatwright <version>\")", cfg.VersionProbeArgs)
+		t.Errorf("VersionProbeArgs = %v, want [version] (chatwright version prints \"chatwright <version> (<commit>) <date>\")", cfg.VersionProbeArgs)
 	}
 }
 
-// UndeterminedVersions must declare every placeholder cliVersion() can
-// report — including "(devel)" defensively, even though cliVersion already
-// filters it out before returning — per the task's own instruction: an
-// undeclared placeholder is compared as a real version and reports an
+// UndeterminedVersions must declare every placeholder cliBuildInfo().Short()
+// can report — including "(devel)" defensively, even though buildinfo.Get
+// already filters it out before returning — per the task's own instruction:
+// an undeclared placeholder is compared as a real version and reports an
 // update available FROM a version that does not exist.
 func TestSelfUpdateConfig_UndeterminedVersionsCoverEveryPlaceholder(t *testing.T) {
 	cfg := selfUpdateConfig()
-	want := map[string]bool{fallbackVersion: false, "(devel)": false}
+	want := map[string]bool{undeterminedVersion: false, "(devel)": false}
 	for _, v := range cfg.UndeterminedVersions {
 		if _, ok := want[v]; ok {
 			want[v] = true
