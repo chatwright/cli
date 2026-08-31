@@ -177,7 +177,7 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 	}
 
 	srv, err := server.New(server.Config{
-		Version:         cliVersion(),
+		Version:         cliBuildInfo().Short(),
 		UpstreamBaseURL: *upstream,
 		FixturesPath:    *fixtures,
 		Logger:          logger,

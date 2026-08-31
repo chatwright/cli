@@ -15,8 +15,9 @@ func TestRunVersion(t *testing.T) {
 	}
 	got := stdout.String()
 	lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
-	if lines[0] != "chatwright "+cliVersion() {
-		t.Fatalf("run(version) first line = %q, want %q", lines[0], "chatwright "+cliVersion())
+	want := cliBuildInfo().Long()
+	if lines[0] != want {
+		t.Fatalf("run(version) first line = %q, want %q", lines[0], want)
 	}
 	// The split's contract: version reports the resolved runtime and sdk
 	// module versions from build info alongside the CLI's own.
@@ -28,6 +29,22 @@ func TestRunVersion(t *testing.T) {
 	}
 	if !strings.Contains(got, "run-bundle format: https://chatwright.dev/formats/run-bundle/v1") {
 		t.Fatalf("run(version) stdout = %q, want the run-bundle format line", got)
+	}
+}
+
+func TestRunVersionFlag(t *testing.T) {
+	want := cliBuildInfo().Short()
+
+	for _, flag := range []string{"--version", "-v"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+
+		if code := run([]string{flag}, &stdout, &stderr); code != 0 {
+			t.Fatalf("run(%s) exit code = %d, want 0; stderr = %q", flag, code, stderr.String())
+		}
+		if got := stdout.String(); got != want+"\n" {
+			t.Fatalf("run(%s) stdout = %q, want %q", flag, got, want+"\n")
+		}
 	}
 }
 
