@@ -6,7 +6,7 @@ require (
 	chatwright.dev/runtime v0.5.0
 	chatwright.dev/sdk v0.3.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
-	github.com/strongo/buildinfo v0.1.1
+	github.com/strongo/buildinfo v0.2.0
 	github.com/strongo/selfupdate v0.3.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 )
