@@ -11,7 +11,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +21,7 @@ import (
 
 	"chatwright.dev/runtime/arena"
 	"chatwright.dev/runtime/goal"
+	"github.com/spf13/cobra"
 )
 
 // resultsFileName is the machine-readable summary `arena run` writes
@@ -30,56 +30,16 @@ import (
 const resultsFileName = "results.json"
 
 func runArena(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "chatwright arena: missing subcommand (run|report)")
-		printArenaUsage(stderr)
-		return 2
-	}
-	switch args[0] {
-	case "run":
-		return runArenaRun(args[1:], stdout, stderr)
-	case "report":
-		return runArenaReport(args[1:], stdout, stderr)
-	case "help", "-h", "--help":
-		printArenaUsage(stdout)
-		return 0
-	default:
-		_, _ = fmt.Fprintf(stderr, "chatwright arena: unknown subcommand %q\n\n", args[0])
-		printArenaUsage(stderr)
-		return 2
-	}
-}
-
-func printArenaUsage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `Run and report on the actor-model arena (see chatwright.dev/runtime/arena).
-
-Usage:
-  chatwright arena run --config arena.yaml --out DIR
-  chatwright arena report --dir DIR
-
-Commands:
-  run       Execute an arena matrix, writing bundles/, report.md and
-            results.json into DIR
-  report    Recompute report.md from a DIR's bundles/ and results.json,
-            without re-running any model`)
+	return run(append([]string{"arena"}, args...), stdout, stderr)
 }
 
 // runArenaRun implements `chatwright arena run`.
 func runArenaRun(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("chatwright arena run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	configPath := fs.String("config", "", "path to an arena.yaml matrix config (required)")
-	outDir := fs.String("out", "", "output directory for bundles/, report.md and results.json (required)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *configPath == "" || *outDir == "" {
-		_, _ = fmt.Fprintln(stderr, "chatwright arena run: --config and --out are both required")
-		fs.Usage()
-		return 2
-	}
+	return run(append([]string{"arena", "run"}, args...), stdout, stderr)
+}
 
-	cfg, err := loadArenaConfig(*configPath)
+func executeArenaRun(configPath, outDir string, stdout, stderr io.Writer) int {
+	cfg, err := loadArenaConfig(configPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
@@ -96,12 +56,12 @@ func runArenaRun(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := writeArenaOutputs(*outDir, results); err != nil {
+	if err := writeArenaOutputs(outDir, results); err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
 
-	_, _ = fmt.Fprintf(stdout, "wrote %s (bundles/, report.md, %s)\n", *outDir, resultsFileName)
+	_, _ = fmt.Fprintf(stdout, "wrote %s (bundles/, report.md, %s)\n", outDir, resultsFileName)
 	return 0
 }
 
@@ -111,19 +71,11 @@ func runArenaRun(args []string, stdout, stderr io.Writer) int {
 // dir no longer has — and rewrites dir/report.md from it via
 // arena.WriteReport, without re-running any model.
 func runArenaReport(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("chatwright arena report", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	dir := fs.String("dir", "", "arena output directory, as written by a prior 'arena run' (required)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *dir == "" {
-		_, _ = fmt.Fprintln(stderr, "chatwright arena report: --dir is required")
-		fs.Usage()
-		return 2
-	}
+	return run(append([]string{"arena", "report"}, args...), stdout, stderr)
+}
 
-	results, warnings, err := readArenaResults(*dir)
+func executeArenaReport(dir string, stdout, stderr io.Writer) int {
+	results, warnings, err := readArenaResults(dir)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
 		return 1
@@ -132,7 +84,7 @@ func runArenaReport(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena report: warning: %s\n", w)
 	}
 
-	reportPath := filepath.Join(*dir, "report.md")
+	reportPath := filepath.Join(dir, "report.md")
 	f, err := os.Create(reportPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
@@ -151,6 +103,31 @@ func runArenaReport(args []string, stdout, stderr io.Writer) int {
 
 	_, _ = fmt.Fprintf(stdout, "wrote %s\n", reportPath)
 	return 0
+}
+
+func newArenaCommand() *cobra.Command {
+	arenaCmd := &cobra.Command{Use: "arena", Short: "Run and report on the actor-model arena", Long: "Run an actor-model matrix or regenerate its report from saved results.", Example: `  chatwright arena run --config arena.yaml --out ./arena-output
+  chatwright arena report --dir ./arena-output`, Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error { return fmt.Errorf("missing subcommand (run|report)") }}
+	var configPath, outDir string
+	runCmd := &cobra.Command{Use: "run", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if configPath == "" || outDir == "" {
+			return fmt.Errorf("--config and --out are both required")
+		}
+		return commandResult(executeArenaRun(configPath, outDir, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	runCmd.Flags().StringVar(&configPath, "config", "", "path to an arena.yaml matrix config (required)")
+	runCmd.Flags().StringVar(&outDir, "out", "", "output directory for bundles/, report.md and results.json (required)")
+	var dir string
+	reportCmd := &cobra.Command{Use: "report", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if dir == "" {
+			return fmt.Errorf("--dir is required")
+		}
+		return commandResult(executeArenaReport(dir, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	reportCmd.Flags().StringVar(&dir, "dir", "", "arena output directory written by a prior arena run (required)")
+	arenaCmd.AddCommand(runCmd, reportCmd)
+	addLegacyHelpCommand(arenaCmd)
+	return arenaCmd
 }
 
 // --- arena.yaml config ---

@@ -17,12 +17,10 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"chatwright.dev/cli/internal/term"
@@ -30,6 +28,7 @@ import (
 	runengine "chatwright.dev/runtime/run"
 	"chatwright.dev/runtime/scenario"
 	"chatwright.dev/sdk"
+	"github.com/spf13/cobra"
 )
 
 // exitActorUnavailable is `chatwright run`'s exit code for a run whose actor
@@ -69,77 +68,54 @@ const exitInterrupted = 130
 
 // runRun implements `chatwright run DOCUMENT [flags]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
-	// A bare "help", "-h" or "--help" as the first argument all mean the
-	// same thing here — mirroring main.go's own "help"/"-h"/"--help"
-	// dispatch and runArena's identical three-way case. Handling all three
-	// explicitly, before flag parsing, matters for two different reasons:
-	// "help" is not a flag at all, so without this check "chatwright run
-	// help" would try to open a file literally named "help" instead of
-	// showing usage (DOCUMENT is a required positional argument); and
-	// "-h"/"--help", while flag.FlagSet.Parse does recognize them itself,
-	// would otherwise print flag.FlagSet's own bare default usage (just the
-	// registered flags, no description, no DOCUMENT usage line) rather than
-	// this command's own printRunUsage — fs.Usage is set to printRunUsage
-	// below as a backstop for the rarer case of "-h"/"--help" appearing
-	// after another flag (e.g. "run --out DIR --help"), but args[0] is by
-	// far the common case and is handled here without even constructing a
-	// FlagSet.
-	if len(args) > 0 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
-		printRunUsage(stdout)
-		return 0
-	}
+	return run(append([]string{"run"}, args...), stdout, stderr)
+}
 
-	fs := flag.NewFlagSet("chatwright run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fs.Usage = func() { printRunUsage(stderr) }
-	outDir := fs.String("out", ".", "output directory for the run bundle")
-	write := fs.Bool("write", false, `write the built-in example's document and cassette into --out instead of running them (DOCUMENT must be "example")`)
-	jsonOut := fs.Bool("json", false, "emit the run outcome as JSON on stdout in place of the human summary (see printRunUsage's own JSON-shape documentation); never suppressed by --quiet")
-	quiet := fs.Bool("quiet", false, "print nothing on a successful run; a failure or an interrupted run is still reported (errors only); never suppresses --json")
-	verbose := fs.Bool("verbose", false, "show every actor loop iteration on stderr as it happens, not just task boundaries; mutually exclusive with --quiet")
-	// flag.FlagSet.Parse stops at the first non-flag argument, so a flag
-	// given after DOCUMENT (as this command's own usage line documents:
-	// "chatwright run DOCUMENT [--out DIR]") would otherwise be rejected as
-	// an extra positional argument — reorder every recognised flag (in
-	// either "--flag VALUE" or "--flag=VALUE" form, or bare for a boolean
-	// flag) to the front first, wherever it appears.
-	if err := fs.Parse(reorderRunFlagsFirst(args)); err != nil {
-		return 2
-	}
-	if fs.NArg() == 0 {
-		_, _ = fmt.Fprintln(stderr, "chatwright run: missing DOCUMENT")
-		printRunUsage(stderr)
-		return 2
-	}
-	if fs.NArg() > 1 {
-		_, _ = fmt.Fprintf(stderr, "chatwright run: unexpected extra argument %q\n\n", fs.Arg(1))
-		printRunUsage(stderr)
-		return 2
-	}
-	if *quiet && *verbose {
-		_, _ = fmt.Fprintln(stderr, "chatwright run: --quiet and --verbose are mutually exclusive")
-		printRunUsage(stderr)
-		return 2
-	}
-	docPath := fs.Arg(0)
+type runOptions struct {
+	outDir                         string
+	write, jsonOut, quiet, verbose bool
+}
 
-	if *write {
+func newRunCommand() *cobra.Command {
+	opts := runOptions{outDir: "."}
+	cmd := &cobra.Command{Use: "run DOCUMENT", Short: "Execute a self-contained scenario document", Long: "Load and execute a self-contained scenario document, then write a replayable run bundle. The literal DOCUMENT example runs the bundled GreetBot journey without network access or an API key.", Example: `  chatwright run example
+  chatwright run example --json --quiet
+  chatwright run example --write --out ./my-scenario`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if args[0] == "help" {
+			return cmd.Help()
+		}
+		if opts.quiet && opts.verbose {
+			return fmt.Errorf("--quiet and --verbose are mutually exclusive")
+		}
+		return commandResult(executeRun(args[0], opts, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	cmd.Flags().StringVar(&opts.outDir, "out", ".", "output directory for the run bundle")
+	cmd.Flags().BoolVar(&opts.write, "write", false, "write the built-in example into --out instead of running it")
+	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "emit the run outcome as JSON")
+	cmd.Flags().BoolVar(&opts.quiet, "quiet", false, "print nothing on a successful run")
+	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "show every actor loop iteration")
+	return cmd
+}
+
+func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
+
+	if opts.write {
 		if docPath != exampleDocumentArg {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: --write is only valid with DOCUMENT %q\n\n", exampleDocumentArg)
 			printRunUsage(stderr)
 			return 2
 		}
-		if err := os.MkdirAll(*outDir, 0o755); err != nil {
+		if err := os.MkdirAll(opts.outDir, 0o755); err != nil {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 			return 1
 		}
-		written, err := materializeExample(*outDir)
+		written, err := materializeExample(opts.outDir)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 			return 1
 		}
 		_, _ = fmt.Fprintf(stdout, "wrote %s\n", written)
-		_, _ = fmt.Fprintf(stdout, "wrote %s\n", filepath.Join(*outDir, exampleCassetteRelPath))
+		_, _ = fmt.Fprintf(stdout, "wrote %s\n", filepath.Join(opts.outDir, exampleCassetteRelPath))
 		_, _ = fmt.Fprintf(stdout, "edit the goal, then run: chatwright run %s\n", written)
 		return 0
 	}
@@ -179,7 +155,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	if !*quiet {
+	if !opts.quiet {
 		for _, w := range report.Warnings() {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: warning: %s (%s)\n", w.Message, w.Code)
 		}
@@ -193,11 +169,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	defer built.Close()
 
 	var reporter *progressReporter
-	if !*quiet {
+	if !opts.quiet {
 		if line, ok := formatCeilingHeader(profileErr, built.Run.Ceiling); ok {
 			_, _ = fmt.Fprintln(stderr, line)
 		}
-		reporter = newProgressReporter(stderr, profileErr, *verbose, built.Run.Environment.Now)
+		reporter = newProgressReporter(stderr, profileErr, opts.verbose, built.Run.Environment.Now)
 		built.Run.OnProgress = reporter.Handle
 	}
 
@@ -236,11 +212,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := os.MkdirAll(*outDir, 0o755); err != nil {
+	if err := os.MkdirAll(opts.outDir, 0o755); err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 		return 1
 	}
-	bundlePath := filepath.Join(*outDir, doc.ID+".chatwright.json")
+	bundlePath := filepath.Join(opts.outDir, doc.ID+".chatwright.json")
 	f, err := os.Create(bundlePath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
@@ -264,7 +240,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 
 	usage := aggregateUsage(b)
 	switch {
-	case *jsonOut:
+	case opts.jsonOut:
 		// --json's own contract (documented in printRunUsage): exactly one
 		// JSON object on stdout, never suppressed by --quiet — the human
 		// summary below is skipped entirely instead, never both.
@@ -272,7 +248,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: encode result: %v\n", err)
 			return 1
 		}
-	case !*quiet || !outcome.succeeded() || wasInterrupted:
+	case !opts.quiet || !outcome.succeeded() || wasInterrupted:
 		// --quiet's own contract: silence on an unremarkable success: a
 		// failure (verification failed, actor unavailable) or an
 		// interrupted run is still reported, exactly as if --quiet had not
@@ -495,54 +471,6 @@ func assembleRunBundle(doc *scenario.Document, built *scenario.Built, result run
 	}
 
 	return b, outcome, nil
-}
-
-// reorderRunFlagsFirst moves every recognised `chatwright run` flag (in
-// either "--flag VALUE"/"--flag=VALUE" form, or bare for a boolean flag) to
-// the front of args, leaving every other argument — including DOCUMENT —
-// in its original relative order. See runRun's own comment on why this
-// command needs it and the arena subcommand (all flags, no positional
-// argument) does not.
-func reorderRunFlagsFirst(args []string) []string {
-	valueFlags := map[string]bool{"--out": true, "-out": true}
-	boolFlags := map[string]bool{
-		"--write": true, "-write": true,
-		"--json": true, "-json": true,
-		"--quiet": true, "-quiet": true,
-		"--verbose": true, "-verbose": true,
-	}
-
-	var flagArgs, rest []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case valueFlags[a]:
-			flagArgs = append(flagArgs, a)
-			if i+1 < len(args) {
-				i++
-				flagArgs = append(flagArgs, args[i])
-			}
-		case hasFlagPrefix(a, valueFlags) || hasFlagPrefix(a, boolFlags):
-			flagArgs = append(flagArgs, a)
-		case boolFlags[a]:
-			flagArgs = append(flagArgs, a)
-		default:
-			rest = append(rest, a)
-		}
-	}
-	return append(flagArgs, rest...)
-}
-
-// hasFlagPrefix reports whether a is one of names' "=value" forms (e.g.
-// "--out=" for the valueFlags set) — reorderRunFlagsFirst's own helper for
-// the "--flag=value" spelling of any recognised flag.
-func hasFlagPrefix(a string, names map[string]bool) bool {
-	for name := range names {
-		if strings.HasPrefix(a, name+"=") {
-			return true
-		}
-	}
-	return false
 }
 
 func printRunUsage(w io.Writer) {

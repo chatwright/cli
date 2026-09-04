@@ -78,3 +78,36 @@ func TestRunUnknownCommand(t *testing.T) {
 		t.Fatalf("run(unknown) stderr = %q, want unknown-command message", got)
 	}
 }
+
+func TestRunWithoutArgumentsShowsRootHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Available Commands:") || !strings.Contains(stdout.String(), "self-update") {
+		t.Fatalf("root help = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "chatwright run example") {
+		t.Fatalf("root help = %q, want the offline first-use example", stdout.String())
+	}
+}
+
+func TestLegacyBareHelpFormsUsePublicRoot(t *testing.T) {
+	for _, args := range [][]string{
+		{"arena", "help"},
+		{"server", "help"},
+		{"completion", "help"},
+		{"self-update", "help"},
+		{"update", "help"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(args, &stdout, &stderr); code != 0 {
+				t.Fatalf("run(%q) code=%d, want 0; stderr=%q", args, code, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "Usage:") {
+				t.Fatalf("run(%q) stdout=%q, want Cobra help", args, stdout.String())
+			}
+		})
+	}
+}
