@@ -6,9 +6,9 @@ with a kind, base URL, model, and context length. The packaged
 `assets/arena.example.yaml` is a starting point for local Ollama or LM Studio;
 edit it for the real local endpoint and model before running it.
 
-`chatwright arena report --dir DIR` reads `results.json` and existing bundles
-from a completed arena output directory, then rewrites `report.md`. It is the
-right path for an offline report refresh.
+`chatwright arena report --dir DIR` reads saved `results.json` from an arena
+output directory and rewrites `report.md`, even if its bundles were moved.
+It refreshes the report without a model call.
 
 Server flags use this precedence: explicit flag, then `CHATWRIGHT_SERVER_*`
 environment variable, then the command default. `serve` accepts `--addr`,

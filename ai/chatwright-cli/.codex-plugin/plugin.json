@@ -22,7 +22,7 @@
     "longDescription": "Guidance for Chatwright's offline scenario journey, replayable run bundles, arena reports, and server companion.",
     "developerName": "Chatwright",
     "category": "Developer Tools",
-    "capabilities": [],
+    "capabilities": ["Skills"],
     "defaultPrompt": [
       "Run Chatwright's offline example and inspect its bundle.",
       "Refresh a Chatwright arena report from saved results.",
