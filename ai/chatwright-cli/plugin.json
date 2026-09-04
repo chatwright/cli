@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "chatwright-cli",
+  "version": "0.1.0",
+  "description": "Portable Chatwright CLI skills for deterministic scenarios, arena reports, and server workflows.",
+  "author": {
+    "name": "Chatwright"
+  }
+}

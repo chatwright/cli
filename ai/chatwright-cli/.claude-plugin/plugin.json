@@ -1,0 +1,17 @@
+{
+  "name": "chatwright-cli",
+  "version": "0.1.0",
+  "description": "Chatwright CLI skills for deterministic scenarios, arena reports, and server workflows.",
+  "author": {
+    "name": "Chatwright"
+  },
+  "homepage": "https://chatwright.dev",
+  "repository": "https://github.com/chatwright/cli",
+  "license": "MIT",
+  "keywords": [
+    "chatwright",
+    "scenario",
+    "arena",
+    "server"
+  ]
+}
