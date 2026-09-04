@@ -179,14 +179,6 @@ type serverStartFlags struct {
 func (f *serverStartFlags) pidPath() string { return filepath.Join(f.stateDir, "server.pid") }
 func (f *serverStartFlags) logPath() string { return filepath.Join(f.stateDir, "server.log") }
 
-func runServerStart(args []string, stdout, stderr io.Writer) int {
-	return run(append([]string{"server", "start"}, args...), stdout, stderr)
-}
-
-func runServerRestart(args []string, stdout, stderr io.Writer) int {
-	return run(append([]string{"server", "restart"}, args...), stdout, stderr)
-}
-
 func executeServerRestart(f *serverStartFlags, stdout, stderr io.Writer) int {
 	if err := server.Stop(f.pidPath(), 0); err != nil && !errors.Is(err, server.ErrNotRunning) {
 		_, _ = fmt.Fprintf(stderr, "chatwright server restart: stopping: %v\n", err)

@@ -49,7 +49,7 @@ usage, runtime, run-result and interruption exits without duplicate errors.
 **Status:** complete
 
 Replace all handwritten flag parsing with typed Cobra options. Bind
-`strongo/selfupdate/cobracmd` with Chatwright's release configuration and
+`github.com/strongo/cli-helpers/selfupdate/cobracmd` with Chatwright's release configuration and
 exit mapper. Generate bash, zsh and fish scripts through Cobra, then prove
 the offline example, accepted flag order, self-update output, and generated
 completion commands.
