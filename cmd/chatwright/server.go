@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -23,6 +22,7 @@ import (
 	"syscall"
 
 	"chatwright.dev/cli/internal/server"
+	"github.com/spf13/cobra"
 )
 
 // Environment variable names the server subcommands fall back to when the
@@ -40,65 +40,7 @@ const (
 )
 
 func runServer(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "chatwright server: missing subcommand (serve|start|stop|restart)")
-		printServerUsage(stderr)
-		return 2
-	}
-	switch args[0] {
-	case "serve":
-		return runServerServe(args[1:], stdout, stderr)
-	case "start":
-		return runServerStart(args[1:], stdout, stderr)
-	case "stop":
-		return runServerStop(args[1:], stdout, stderr)
-	case "restart":
-		return runServerRestart(args[1:], stdout, stderr)
-	case "help", "-h", "--help":
-		printServerUsage(stdout)
-		return 0
-	default:
-		_, _ = fmt.Fprintf(stderr, "chatwright server: unknown subcommand %q\n\n", args[0])
-		printServerUsage(stderr)
-		return 2
-	}
-}
-
-func printServerUsage(w io.Writer) {
-	_, _ = fmt.Fprintf(w, `Run the chatwright server companion daemon (see chatwright.dev/cli/internal/server).
-
-Usage:
-  chatwright server serve   [flags]   Run in the foreground, logging to stdout
-  chatwright server start   [flags]   Start a detached background daemon
-  chatwright server stop    [flags]   Stop the background daemon
-  chatwright server restart [flags]   Stop (if running), then start
-
-Flags (serve/start/restart):
-  --addr string               listen address (default %s, env %s)
-  --upstream string           OpenAI-compatible upstream base URL for the
-                               chat-completions proxy (default %s, env %s)
-  --datastate-fixtures string path to a JSON datastate fixtures file; unset
-                               means POST /datastate/query always answers
-                               "unsupported" (env %s)
-  --ui-dir string              directory of a built Studio UI to serve at /,
-                               with an SPA fallback to index.html (env %s);
-                               wins over --ui when both are given
-  --ui                         download, cache, integrity-verify and serve
-                               the Studio UI at / so the tester can run
-                               offline after the first fetch (env %s; see
-                               chatwright.dev/cli/internal/server
-                               ui_offline.go)
-  --ui-url string               override the Studio UI release base URL
-                               used by --ui (default %s, env %s)
-  --allow-origin string        additional CORS origin to allow, beyond the
-                               built-in https://chatwright.dev and
-                               http://chatwright.localhost (repeatable; env
-                               %s is comma-separated)
-
-Flags (start/stop/restart):
-  --state-dir string           directory for server.pid and server.log
-                               (default ~/.chatwright, env %s)
-`, server.DefaultAddr, envAddr, server.DefaultUpstreamBaseURL, envUpstream, envFixtures, envUIDir, envUI, server.DefaultUIBaseURL, envUIURL, envAllowOrigin, envStateDir)
+	return run(append([]string{"server"}, args...), stdout, stderr)
 }
 
 // envOrDefault returns the named environment variable's value when set and
@@ -137,32 +79,16 @@ func defaultStateDir() string {
 // repeatedFlag accumulates every occurrence of a repeatable string flag
 // (the standard library's flag package has no built-in repeatable string
 // flag type).
-type repeatedFlag []string
-
-func (r *repeatedFlag) String() string { return strings.Join(*r, ",") }
-func (r *repeatedFlag) Set(v string) error {
-	*r = append(*r, v)
-	return nil
-}
+type repeatedFlag = []string
 
 // --- serve ---
 
 func runServerServe(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("chatwright server serve", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	addr := fs.String("addr", envOrDefault(envAddr, server.DefaultAddr), "listen address (host:port)")
-	upstream := fs.String("upstream", envOrDefault(envUpstream, server.DefaultUpstreamBaseURL), "OpenAI-compatible upstream base URL")
-	fixtures := fs.String("datastate-fixtures", envOrDefault(envFixtures, ""), "path to a JSON datastate fixtures file")
-	uiDir := fs.String("ui-dir", envOrDefault(envUIDir, ""), "directory of a built Studio UI to serve at /")
-	uiEnabled := fs.Bool("ui", envBoolOrDefault(envUI, false), "download, cache, verify and serve the Studio UI at /")
-	uiURL := fs.String("ui-url", envOrDefault(envUIURL, ""), "override the Studio UI release base URL used by --ui")
-	var allowOrigins repeatedFlag
-	fs.Var(&allowOrigins, "allow-origin", "additional CORS origin to allow (repeatable)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
+	return run(append([]string{"server", "serve"}, args...), stdout, stderr)
+}
 
-	origins := resolveAllowedOrigins(allowOrigins)
+func executeServerServe(f serverStartFlags, stdout, stderr io.Writer) int {
+	origins := resolveAllowedOrigins(f.allowOrigins)
 	logger := log.New(stdout, "", log.LstdFlags)
 
 	// Created before the server so a --ui download can itself be
@@ -170,7 +96,7 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	resolvedUIDir, err := resolveServeUIDir(ctx, *uiDir, *uiEnabled, *uiURL, logger)
+	resolvedUIDir, err := resolveServeUIDir(ctx, f.uiDir, f.uiEnabled, f.uiURL, logger)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright server serve: %v\n", err)
 		return 1
@@ -178,8 +104,8 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 
 	srv, err := server.New(server.Config{
 		Version:         cliBuildInfo().Short(),
-		UpstreamBaseURL: *upstream,
-		FixturesPath:    *fixtures,
+		UpstreamBaseURL: f.upstream,
+		FixturesPath:    f.fixtures,
 		Logger:          logger,
 		AllowedOrigins:  origins,
 		UIDir:           resolvedUIDir,
@@ -189,8 +115,8 @@ func runServerServe(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	_, _ = fmt.Fprintf(stdout, "chatwright server listening on %s (upstream %s)\n", *addr, *upstream)
-	if err := srv.ListenAndServe(ctx, *addr); err != nil {
+	_, _ = fmt.Fprintf(stdout, "chatwright server listening on %s (upstream %s)\n", f.addr, f.upstream)
+	if err := srv.ListenAndServe(ctx, f.addr); err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright server serve: %v\n", err)
 		return 1
 	}
@@ -250,42 +176,10 @@ type serverStartFlags struct {
 	stateDir     string
 }
 
-func parseServerStartFlags(name string, args []string, stderr io.Writer) (*serverStartFlags, int) {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	f := &serverStartFlags{}
-	addr := fs.String("addr", envOrDefault(envAddr, server.DefaultAddr), "listen address (host:port)")
-	upstream := fs.String("upstream", envOrDefault(envUpstream, server.DefaultUpstreamBaseURL), "OpenAI-compatible upstream base URL")
-	fixtures := fs.String("datastate-fixtures", envOrDefault(envFixtures, ""), "path to a JSON datastate fixtures file")
-	uiDir := fs.String("ui-dir", envOrDefault(envUIDir, ""), "directory of a built Studio UI to serve at /")
-	uiEnabled := fs.Bool("ui", envBoolOrDefault(envUI, false), "download, cache, verify and serve the Studio UI at /")
-	uiURL := fs.String("ui-url", envOrDefault(envUIURL, ""), "override the Studio UI release base URL used by --ui")
-	fs.Var(&f.allowOrigins, "allow-origin", "additional CORS origin to allow (repeatable)")
-	stateDir := fs.String("state-dir", envOrDefault(envStateDir, defaultStateDir()), "directory for server.pid and server.log")
-	if err := fs.Parse(args); err != nil {
-		return nil, 2
-	}
-	f.addr, f.upstream, f.fixtures, f.uiDir, f.stateDir = *addr, *upstream, *fixtures, *uiDir, *stateDir
-	f.uiEnabled, f.uiURL = *uiEnabled, *uiURL
-	return f, 0
-}
-
 func (f *serverStartFlags) pidPath() string { return filepath.Join(f.stateDir, "server.pid") }
 func (f *serverStartFlags) logPath() string { return filepath.Join(f.stateDir, "server.log") }
 
-func runServerStart(args []string, stdout, stderr io.Writer) int {
-	f, code := parseServerStartFlags("chatwright server start", args, stderr)
-	if f == nil {
-		return code
-	}
-	return startDaemon(f, stdout, stderr)
-}
-
-func runServerRestart(args []string, stdout, stderr io.Writer) int {
-	f, code := parseServerStartFlags("chatwright server restart", args, stderr)
-	if f == nil {
-		return code
-	}
+func executeServerRestart(f *serverStartFlags, stdout, stderr io.Writer) int {
 	if err := server.Stop(f.pidPath(), 0); err != nil && !errors.Is(err, server.ErrNotRunning) {
 		_, _ = fmt.Fprintf(stderr, "chatwright server restart: stopping: %v\n", err)
 		return 1
@@ -348,15 +242,11 @@ func startDaemon(f *serverStartFlags, stdout, stderr io.Writer) int {
 // --- stop ---
 
 func runServerStop(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("chatwright server stop", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	stateDir := fs.String("state-dir", envOrDefault(envStateDir, defaultStateDir()), "directory holding server.pid")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	pidPath := filepath.Join(*stateDir, "server.pid")
+	return run(append([]string{"server", "stop"}, args...), stdout, stderr)
+}
 
-	err := server.Stop(pidPath, 0)
+func executeServerStop(stateDir string, stdout, stderr io.Writer) int {
+	err := server.Stop(filepath.Join(stateDir, "server.pid"), 0)
 	switch {
 	case err == nil:
 		_, _ = fmt.Fprintln(stdout, "chatwright server stopped")
@@ -368,4 +258,61 @@ func runServerStop(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "chatwright server stop: %v\n", err)
 		return 1
 	}
+}
+
+func newServerFlags() serverStartFlags {
+	return serverStartFlags{
+		addr:      envOrDefault(envAddr, server.DefaultAddr),
+		upstream:  envOrDefault(envUpstream, server.DefaultUpstreamBaseURL),
+		fixtures:  envOrDefault(envFixtures, ""),
+		uiDir:     envOrDefault(envUIDir, ""),
+		uiEnabled: envBoolOrDefault(envUI, false),
+		uiURL:     envOrDefault(envUIURL, ""),
+		stateDir:  envOrDefault(envStateDir, defaultStateDir()),
+	}
+}
+
+func bindServerFlags(cmd *cobra.Command, f *serverStartFlags, includeStateDir bool) {
+	flags := cmd.Flags()
+	flags.StringVar(&f.addr, "addr", f.addr, "listen address (host:port)")
+	flags.StringVar(&f.upstream, "upstream", f.upstream, "OpenAI-compatible upstream base URL")
+	flags.StringVar(&f.fixtures, "datastate-fixtures", f.fixtures, "path to a JSON datastate fixtures file")
+	flags.StringVar(&f.uiDir, "ui-dir", f.uiDir, "directory of a built Studio UI to serve at /")
+	flags.BoolVar(&f.uiEnabled, "ui", f.uiEnabled, "download, cache, verify and serve the Studio UI at /")
+	flags.StringVar(&f.uiURL, "ui-url", f.uiURL, "override the Studio UI release base URL used by --ui")
+	flags.StringArrayVar(&f.allowOrigins, "allow-origin", nil, "additional CORS origin to allow (repeatable)")
+	if includeStateDir {
+		flags.StringVar(&f.stateDir, "state-dir", f.stateDir, "directory for server.pid and server.log")
+	}
+}
+
+func newServerCommand() *cobra.Command {
+	serverCmd := &cobra.Command{Use: "server", Short: "Run the server companion daemon", Long: "Run Chatwright's HTTP server in the foreground or manage its detached companion daemon.", Example: `  chatwright server serve --addr 127.0.0.1:8080
+  chatwright server start --state-dir ~/.chatwright
+  chatwright server stop --state-dir ~/.chatwright`, Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
+		return fmt.Errorf("missing subcommand (serve|start|stop|restart)")
+	}}
+	serveFlags := newServerFlags()
+	serveCmd := &cobra.Command{Use: "serve", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return commandResult(executeServerServe(serveFlags, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	bindServerFlags(serveCmd, &serveFlags, false)
+	startFlags := newServerFlags()
+	startCmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return commandResult(startDaemon(&startFlags, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	bindServerFlags(startCmd, &startFlags, true)
+	restartFlags := newServerFlags()
+	restartCmd := &cobra.Command{Use: "restart", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return commandResult(executeServerRestart(&restartFlags, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	bindServerFlags(restartCmd, &restartFlags, true)
+	stopFlags := newServerFlags()
+	stopCmd := &cobra.Command{Use: "stop", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return commandResult(executeServerStop(stopFlags.stateDir, cmd.OutOrStdout(), cmd.ErrOrStderr()))
+	}}
+	stopCmd.Flags().StringVar(&stopFlags.stateDir, "state-dir", stopFlags.stateDir, "directory holding server.pid")
+	serverCmd.AddCommand(serveCmd, startCmd, stopCmd, restartCmd)
+	addLegacyHelpCommand(serverCmd)
+	return serverCmd
 }

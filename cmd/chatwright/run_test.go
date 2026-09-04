@@ -30,8 +30,8 @@ func TestRunRequiresDocument(t *testing.T) {
 	if code := runRun(nil, &stdout, &stderr); code != 2 {
 		t.Fatalf("runRun(nil) code = %d, want 2; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "missing DOCUMENT") {
-		t.Errorf("stderr = %q, want a missing-DOCUMENT message", stderr.String())
+	if !strings.Contains(stderr.String(), "accepts 1 arg") {
+		t.Errorf("stderr = %q, want Cobra argument diagnostic", stderr.String())
 	}
 }
 
@@ -45,6 +45,11 @@ func TestRunHelp(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "chatwright run DOCUMENT") {
 		t.Errorf("stdout = %q, want the command's own usage", stdout.String())
+	}
+	for _, example := range []string{"--json --quiet", "--write --out"} {
+		if !strings.Contains(stdout.String(), example) {
+			t.Errorf("stdout = %q, want documented %s journey", stdout.String(), example)
+		}
 	}
 }
 
@@ -136,8 +141,8 @@ func TestRunRejectsExtraArguments(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("runRun() code = %d, want 2", code)
 	}
-	if !strings.Contains(stderr.String(), "unexpected extra argument") {
-		t.Errorf("stderr = %q, want an unexpected-extra-argument message", stderr.String())
+	if !strings.Contains(stderr.String(), "accepts 1 arg") {
+		t.Errorf("stderr = %q, want Cobra argument diagnostic", stderr.String())
 	}
 }
 

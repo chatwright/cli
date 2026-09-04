@@ -15,7 +15,9 @@ import (
 	"chatwright.dev/runtime/telegram"
 	"chatwright.dev/runtime/whatsapp"
 	"chatwright.dev/sdk"
+	"github.com/spf13/cobra"
 	"github.com/strongo/buildinfo"
+	"github.com/strongo/cli-helpers/selfupdate"
 )
 
 // sdkModulePath and runtimeModulePath name the two Chatwright modules whose
@@ -76,41 +78,62 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		printUsage(stdout)
-		return 0
-	}
+	return executeCommand(newRootCommand(os.Stdin), args, stdout, stderr)
+}
 
-	switch args[0] {
-	case "help", "-h", "--help":
-		printUsage(stdout)
-		return 0
-	case "--version", "-v":
-		_, _ = fmt.Fprintln(stdout, cliBuildInfo().Short())
-		return 0
-	case "version":
-		printVersion(stdout)
-		return 0
-	case "platforms":
-		for _, p := range builtinPlatforms() {
-			_, _ = fmt.Fprintf(stdout, "%s\t%s\n", p.Name(), platformSummaries[p.Name()])
-		}
-		return 0
-	case "arena":
-		return runArena(args[1:], stdout, stderr)
-	case "run":
-		return runRun(args[1:], stdout, stderr)
-	case "server":
-		return runServer(args[1:], stdout, stderr)
-	case "completion":
-		return runCompletion(args[1:], stdout, stderr)
-	case "self-update", "update":
-		return runSelfUpdate(args[1:], os.Stdin, stdout, stderr)
-	default:
-		_, _ = fmt.Fprintf(stderr, "chatwright: unknown command %q\n\n", args[0])
-		printUsage(stderr)
-		return 2
+func newRootCommand(stdin io.Reader) *cobra.Command {
+	return newRootCommandWithSelfUpdateConfig(stdin, selfUpdateConfig())
+}
+
+func newRootCommandWithSelfUpdateConfig(stdin io.Reader, updateConfig selfupdate.Config) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "chatwright",
+		Short: "Execute and inspect Chatwright scenarios",
+		Long:  "Chatwright executes self-contained messaging scenarios and writes replayable run bundles.",
+		Example: `  chatwright run example
+  chatwright run example --json --quiet
+  chatwright run example --write --out ./my-scenario`,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return commandResult(0)
+		},
 	}
+	root.Flags().BoolP("version", "v", false, "print the Chatwright CLI version")
+	root.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		version, err := cmd.Flags().GetBool("version")
+		if err != nil || !version {
+			return nil
+		}
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), cliBuildInfo().Short())
+		return &commandError{code: 0}
+	}
+	root.AddCommand(
+		newPlatformsCommand(),
+		newVersionCommand(),
+		newRunCommand(),
+		newArenaCommand(),
+		newServerCommand(),
+		newCompletionCommand(),
+		newSelfUpdateCommandWithConfig(updateConfig, stdin),
+	)
+	return root
+}
+
+func newPlatformsCommand() *cobra.Command {
+	return &cobra.Command{Use: "platforms", Short: "List built-in messaging platform emulators", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		for _, p := range builtinPlatforms() {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", p.Name(), platformSummaries[p.Name()])
+		}
+		return nil
+	}}
+}
+
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{Use: "version", Short: "Print CLI, runtime and SDK versions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		printVersion(cmd.OutOrStdout())
+		return nil
+	}}
 }
 
 // printVersion prints the CLI's own build identity (name, version, commit,
@@ -127,25 +150,4 @@ func printVersion(w io.Writer) {
 		_, _ = fmt.Fprintf(w, "sdk: %s %s\n", sdkModulePath, v)
 	}
 	_, _ = fmt.Fprintf(w, "run-bundle format: %s\n", sdk.FormatV1)
-}
-
-func printUsage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `Chatwright CLI
-
-Usage:
-  chatwright <command>
-
-Commands:
-  platforms     List built-in messaging platform emulators
-  run           Execute a self-contained scenario document (chatwright run --help)
-  arena         Run and report on the actor-model arena (chatwright arena help)
-  server        Run the server companion daemon (chatwright server help)
-  completion    Generate a bash/zsh/fish completion script (chatwright completion help)
-  self-update   Update the installed binary in place (chatwright self-update --help);
-                also available as "chatwright update"
-  version       Print the CLI, runtime and sdk versions
-  help          Show this help
-
-Try it now — no files, no network, no API key:
-  chatwright run example`)
 }

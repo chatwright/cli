@@ -1,12 +1,12 @@
 ---
 format: https://specscore.md/feature-specification
-status: Draft
+status: Implementing
 ---
 
 # Feature: Self-Update
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/chatwright/cli/spec/features/self-update?op=explore) | [Edit](https://specscore.studio/app/github.com/chatwright/cli/spec/features/self-update?op=edit) | [Ask question](https://specscore.studio/app/github.com/chatwright/cli/spec/features/self-update?op=ask) | [Request change](https://specscore.studio/app/github.com/chatwright/cli/spec/features/self-update?op=request-change) |
-**Status:** Draft
+**Status:** Implementing
 **Source Ideas:** —
 
 ## Summary
@@ -62,7 +62,7 @@ accept `chatwright update` as an alias resolving to identical behavior.
 
 #### REQ: library-provided-behavior
 
-The command MUST obtain its behavior from `github.com/strongo/selfupdate`
+The command MUST obtain its behavior from `github.com/strongo/cli-helpers/selfupdate`
 rather than reimplementing it. Install-method detection, stable-release
 resolution, version comparison, pinned targets and the downgrade guard,
 asset download, sha256 verification before extraction, atomic replacement,
@@ -71,17 +71,17 @@ that every failure leaves a working binary are inherited from that library's
 Feature and MUST NOT be restated or reinterpreted here. A behavior change
 belongs upstream, in the library, not in a chatwright-local fork.
 
-#### REQ: flag-surface-without-cobra
+#### REQ: cobra-command-surface
 
-chatwright MUST expose the identical flag surface
-`github.com/strongo/selfupdate/cobracmd` would register for a Cobra-based
-consumer — `--check`, `--yes`/`-y`, `--version <tag>`, `--allow-downgrade`,
-`--dry-run`, and `--format text|json` — reached through the framework-neutral
-`github.com/strongo/selfupdate/cliui` subpackage instead, because this
-repository has no Cobra dependency (see AGENTS.md: "the CLI is deliberately
-thin") and does not take one on for this feature. `--version` here is
-`self-update`-local and MUST NOT collide with the root `chatwright version`
-command, which reports build identity.
+chatwright MUST construct the command through
+`github.com/strongo/cli-helpers/selfupdate/cobracmd.New`, exposing its
+`--check`, `--yes`/`-y`, `--version <tag>`, `--allow-downgrade`, `--dry-run`,
+and `--format text|json` flag surface through the Chatwright Cobra tree. The
+CLI supplies only its typed release configuration, alias, stdin, and
+exit-code mapper; it MUST NOT retain a Chatwright-local parser, prompt,
+renderer, or command execution engine. `--version` here is `self-update`-
+local and MUST NOT collide with the root `chatwright version` command, which
+reports build identity.
 
 ### chatwright's configuration of the library
 
@@ -156,11 +156,11 @@ either without conflict.
 
 ### AC: canonical-and-alias
 
-**Requirements:** self-update#req:command-and-alias, self-update#req:flag-surface-without-cobra
+**Requirements:** self-update#req:command-and-alias, self-update#req:cobra-command-surface
 
 **Given** an installed chatwright binary
 **When** the user runs `chatwright self-update --check` and, separately, `chatwright update --check`
-**Then** both invocations execute the same command and produce identical output and exit code, and the full flag surface (`--check`, `--yes`/`-y`, `--version`, `--allow-downgrade`, `--dry-run`, `--format`) is accepted by both without a Cobra dependency anywhere in the CLI.
+**Then** both invocations execute the same Cobra command and produce identical output and exit code, and the full flag surface (`--check`, `--yes`/`-y`, `--version`, `--allow-downgrade`, `--dry-run`, `--format`) is accepted by both.
 
 ### AC: behavior-comes-from-the-library
 

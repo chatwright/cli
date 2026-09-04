@@ -31,8 +31,8 @@ func TestRunArenaHelp(t *testing.T) {
 	if code := runArena([]string{"help"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("runArena(help) code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "arena run") {
-		t.Errorf("help output = %q, want it to mention 'arena run'", stdout.String())
+	if !strings.Contains(stdout.String(), "Available Commands") || !strings.Contains(stdout.String(), "run") {
+		t.Errorf("help output = %q, want Cobra arena commands", stdout.String())
 	}
 }
 
@@ -41,8 +41,8 @@ func TestRunArenaUnknownSubcommand(t *testing.T) {
 	if code := runArena([]string{"bogus"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("runArena(bogus) code = %d, want 2", code)
 	}
-	if !strings.Contains(stderr.String(), "unknown subcommand") {
-		t.Errorf("stderr = %q, want an unknown-subcommand message", stderr.String())
+	if !strings.Contains(stderr.String(), "unknown command") {
+		t.Errorf("stderr = %q, want a Cobra unknown-command message", stderr.String())
 	}
 }
 
