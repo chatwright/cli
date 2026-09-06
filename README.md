@@ -49,6 +49,7 @@ Commands:
   completion    Generate a bash/zsh/fish completion script (chatwright completion help)
   self-update   Update the installed binary in place (chatwright self-update --help);
                 also available as "chatwright update"
+  skills        Install Chatwright Agent Skills into supported harnesses
   version       Print the CLI, runtime and sdk versions
   help          Show this help
 
@@ -108,6 +109,22 @@ this command's exit codes (0 success — including a completed `--check`
 whatever its verdict; 1 a runtime failure no flag fixes; 2 a usage error,
 including a confirmation that was needed but neither `--yes` nor a terminal
 was available).
+
+### `chatwright skills sync`
+
+Installs the Chatwright Agent Skills embedded in the exact CLI build:
+
+```sh
+chatwright skills sync
+chatwright skills sync --harness codex
+chatwright skills sync --dir ./agent-skills --format=json
+chatwright skills sync --newer-compatible
+```
+
+Ordinary sync is offline and selects the immutable plugin revision bundled
+with the installed Chatwright CLI. `--newer-compatible` is the explicit
+opt-in for a newer compatible published bundle. `--json` is a shortcut for
+`--format=json`.
 
 ### Shell completion
 
