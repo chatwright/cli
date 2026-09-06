@@ -35,8 +35,10 @@ The scenario skill uses `chatwright run example` for the bundled deterministic
 journey and keeps the resulting run bundle as the replayable Studio artifact.
 The arena/server skill distinguishes a provider-backed arena run from the
 offline `arena report` refresh, and documents foreground versus daemon server
-control. It does not register `skills sync` or invent a plugin installation
-engine; shared skills distribution remains a later provider-backed cutover.
+control. `chatwright skills sync` binds this tree to the shared
+`github.com/strongo/cli-helpers/skillsync` engine. Ordinary sync uses the
+immutable bundle embedded in the installed CLI and stays offline; only the
+explicit `--newer-compatible` mode may resolve a newer compatible release.
 
 ## Dependencies
 
@@ -67,6 +69,15 @@ editable example path remains available through `--write`.
 **Then** it uses the packaged arena config as a starting point, refreshes an
 existing report without re-running a model, and selects foreground or daemon
 server control with the documented Cobra flags.
+
+### AC: installed-cli-matched-sync
+
+**Given** an installed Chatwright CLI and a supported harness skills directory
+**When** the user runs `chatwright skills sync`
+**Then** the shared cli-helpers engine installs the digest-verified immutable
+bundle embedded in that exact CLI build without reading a source checkout or
+the network, a repeated sync is idempotent, and a newer compatible release is
+considered only when `--newer-compatible` is explicitly supplied.
 
 ## Open Questions
 

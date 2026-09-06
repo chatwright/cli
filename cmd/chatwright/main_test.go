@@ -84,7 +84,9 @@ func TestRunWithoutArgumentsShowsRootHelp(t *testing.T) {
 	if code := run(nil, &stdout, &stderr); code != 0 {
 		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Available Commands:") || !strings.Contains(stdout.String(), "self-update") {
+	if !strings.Contains(stdout.String(), "Available Commands:") ||
+		!strings.Contains(stdout.String(), "self-update") ||
+		!strings.Contains(stdout.String(), "skills") {
 		t.Fatalf("root help = %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "chatwright run example") {
