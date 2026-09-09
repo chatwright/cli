@@ -25,10 +25,21 @@ jobs:
     # Pinned to an exact tag, not the moving @v1: that tag defines the
     # require_notarized_macos input but does NOT contain the
     # macos_signing_preflight job, so the gate silently no-ops there.
-    uses: strongo/cicd/.github/workflows/release.yml@v1.14.17
+    uses: strongo/cicd/.github/workflows/release.yml@v1.18.0
     permissions:
       contents: write
+      # Lets the require_workflow_success guard read the quality
+      # workflow's result for this commit. A reusable workflow cannot
+      # grant itself more than its caller allows, so it belongs here.
+      actions: read
     with:
+      # Refuse to tag or publish unless this repo's quality workflow
+      # passed for this exact commit. Release and that workflow are
+      # siblings started by the same push, with no cross-workflow
+      # `needs:` between them, so before this a red suite could not
+      # stop a release. datatug-cli shipped v0.13.2 that way. Names
+      # the workflow's `name:`, not its filename.
+      require_workflow_success: 'Go CI'
       # Must be >= go.mod's `go` directive (currently 1.27.0). The shared
       # release job runs its `go mod tidy` before-hook under this setup-go
       # version with GOTOOLCHAIN=local, so leaving it unset (default '1.26')
