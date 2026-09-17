@@ -103,7 +103,7 @@ chatwright update                             # alias for self-update
 
 Every safety decision — whether this install may be replaced at all,
 checksum verification before extraction, the atomic swap — comes from
-[`github.com/strongo/selfupdate`](https://github.com/strongo/selfupdate); see
+[`github.com/strongo/cli-helpers/selfupdate`](https://github.com/strongo/cli-helpers); see
 [spec/features/self-update](spec/features/self-update/README.md) for what is
 chatwright's own configuration versus the shared library's behavior. A
 Homebrew-installed binary is redirected to `brew upgrade --cask chatwright`

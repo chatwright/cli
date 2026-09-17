@@ -15,7 +15,7 @@ import (
 // flag surface (no --dir), and carries no "update" alias (that alias stays
 // on self-update only).
 func TestUpgradeCommand_Registration(t *testing.T) {
-	cmd := newUpgradeCommand()
+	cmd := newUpgradeCommand(strings.NewReader(""))
 	if cmd.Name() != "upgrade" {
 		t.Errorf("Name() = %q, want %q", cmd.Name(), "upgrade")
 	}
@@ -31,6 +31,20 @@ func TestUpgradeCommand_Registration(t *testing.T) {
 		if alias == "update" {
 			t.Errorf("upgrade command carries an %q alias; REQ: update-alias-policy forbids it", alias)
 		}
+	}
+}
+
+// M6 review fix: newUpgradeCommandWithConfig MUST SetIn(stdin), exactly like
+// newSelfUpdateCommandWithConfig does (selfupdate.go), so the upgrade batch
+// confirmation prompt reads the SAME injected reader self-update's does
+// rather than falling back to the process's real os.Stdin — otherwise the
+// two commands cannot be driven identically in tests or by a caller that
+// supplies its own stdin (root.go's newRootCommandWithSelfUpdateConfig).
+func TestUpgradeCommandWithConfig_SetsInjectedStdin(t *testing.T) {
+	stdin := strings.NewReader("y\n")
+	cmd := newUpgradeCommandWithConfig(selfUpdateConfig(), stdin)
+	if cmd.InOrStdin() != stdin {
+		t.Error("newUpgradeCommandWithConfig did not SetIn(stdin); InOrStdin() is not the injected reader")
 	}
 }
 
@@ -96,7 +110,7 @@ func TestUpgrade_SelfUpdateEqualsUpgradeSelf(t *testing.T) {
 	}
 
 	var upOut, upErr bytes.Buffer
-	upCmd := newUpgradeCommandWithConfig(cfg)
+	upCmd := newUpgradeCommandWithConfig(cfg, strings.NewReader(""))
 	upCmd.SetOut(&upOut)
 	upCmd.SetErr(&upErr)
 	upCmd.SetArgs([]string{"chatwright", "--check", "--format", "json"})

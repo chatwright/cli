@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 
 	upgradecobracmd "github.com/strongo/cli-helpers/cliinstall/cobracmd"
@@ -11,8 +13,8 @@ import (
 // github.com/strongo/cli-helpers/cliinstall/cobracmd against chatwright's
 // own catalog id, resolving its own release identity the normal way
 // (cli-install#req:host-identity-from-catalog).
-func newUpgradeCommand() *cobra.Command {
-	return newUpgradeCommandWithConfig(selfUpdateConfig())
+func newUpgradeCommand(stdin io.Reader) *cobra.Command {
+	return newUpgradeCommandWithConfig(selfUpdateConfig(), stdin)
 }
 
 // newUpgradeCommandWithConfig builds the "upgrade" command against an
@@ -29,11 +31,20 @@ func newUpgradeCommand() *cobra.Command {
 // cfg (cli-install#req:self-update-equals-upgrade-self,
 // cli-install#req:host-target-is-running-binary). chatwright's self-update
 // configures no AfterUpdate hook, so HostAfterUpdate is left nil.
-func newUpgradeCommandWithConfig(cfg selfupdate.Config) *cobra.Command {
-	return upgradecobracmd.NewUpgrade(upgradecobracmd.UpgradeCommandOptions{
+//
+// stdin is set on the returned command exactly like
+// newSelfUpdateCommandWithConfig's own cmd.SetIn(stdin) (selfupdate.go): the
+// upgrade batch confirmation prompt reads from it, so without this call the
+// prompt would read the process's real os.Stdin regardless of what a caller
+// (root.go, or a test) injects, and the two commands could not be driven
+// identically.
+func newUpgradeCommandWithConfig(cfg selfupdate.Config, stdin io.Reader) *cobra.Command {
+	cmd := upgradecobracmd.NewUpgrade(upgradecobracmd.UpgradeCommandOptions{
 		Short:      "Upgrade installed fleet CLIs, including this one",
 		HostID:     chatwrightCatalogID,
 		Errors:     installErrors{},
 		HostConfig: cfg,
 	})
+	cmd.SetIn(stdin)
+	return cmd
 }
