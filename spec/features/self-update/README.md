@@ -14,7 +14,7 @@ status: Implementing
 `chatwright self-update` (alias `chatwright update`) brings a running
 `chatwright` binary to the latest release. The behavior is not specified
 here: chatwright binds the shared
-[strongo/selfupdate](https://specscore.studio/app/github.com/strongo/selfupdate/spec/features/self-update?op=explore)
+[strongo/cli-helpers](https://specscore.studio/app/github.com/strongo/cli-helpers/spec/features/self-update?op=explore)
 library, whose Feature owns install-method detection, release resolution,
 checksum verification, atomic replacement, and every failure rule. This
 Feature specifies only what is chatwright's own — the command surface,
@@ -123,6 +123,19 @@ real version, which reports an update available *from* a version that does
 not exist. The post-swap version probe MUST use `version`, the argument that
 makes `chatwright version` print a line containing the installed version.
 
+#### REQ: version-json-flag
+
+`chatwright version --json` MUST print exactly one JSON object satisfying
+the fleet-wide `cli-install#req:version-json-contract` (name, version,
+commit, date, date_source), plus chatwright's own `runtime`/`sdk` keys for
+the resolved `chatwright.dev/runtime`/`chatwright.dev/sdk` module versions
+(omitted when undetermined) -- a reader MUST ignore keys it does not
+recognize, so the extra keys never break a fleet-wide prober. It MUST
+perform no network I/O, writes, daemon starts, update checks or telemetry
+(cli-install#req:version-json-side-effect-free): only local reads of the
+already-resolved build identity and the running binary's own recorded
+module dependency versions.
+
 ### Exit codes
 
 #### REQ: exit-code-mapping
@@ -150,7 +163,7 @@ either without conflict.
 
 | Feature | Interaction |
 |---|---|
-| [strongo/selfupdate: Self-Update Library](https://specscore.studio/app/github.com/strongo/selfupdate/spec/features/self-update?op=explore) | Owns the behavior contract this Feature binds. chatwright is a consumer; behavior changes belong there. |
+| [strongo/cli-helpers: Self-Update Library](https://specscore.studio/app/github.com/strongo/cli-helpers/spec/features/self-update?op=explore) | Owns the behavior contract this Feature binds. chatwright is a consumer; behavior changes belong there. |
 
 ## Acceptance Criteria
 
@@ -168,7 +181,7 @@ either without conflict.
 
 **Given** the chatwright/cli source tree
 **When** the self-update command is built
-**Then** detection, release resolution, verification, and replacement come from `github.com/strongo/selfupdate`, chatwright supplies only its release identity, version, and undetermined placeholders, and no copy of that logic exists in chatwright's own tree.
+**Then** detection, release resolution, verification, and replacement come from `github.com/strongo/cli-helpers/selfupdate`, chatwright supplies only its release identity, version, and undetermined placeholders, and no copy of that logic exists in chatwright's own tree.
 
 ### AC: homebrew-is-redirected-never-overwritten
 
@@ -193,6 +206,14 @@ either without conflict.
 **Given** an up-to-date binary, a binary with a newer release available, a non-interactive refusal, a refused downgrade, an unknown `--version` tag, and a checksum failure
 **When** the user runs `chatwright self-update` (or `--check`) in each case
 **Then** the up-to-date and update-available cases both exit `0`, the non-interactive refusal, the refused downgrade, and the unknown tag each exit `2`, the checksum failure exits `1`, and no exit code outside `{0, 1, 2}` is ever returned.
+
+### AC: version-json-is-side-effect-free
+
+**Requirements:** self-update#req:version-json-flag
+
+**Given** the real `chatwright version` command built exactly as `main.go` wires it
+**When** the user runs `chatwright version --json`
+**Then** stdout carries exactly one JSON object with the fleet-wide `name`/`version`/`commit`/`date`/`date_source` keys plus chatwright's own `runtime`/`sdk` keys, and no network request, write, or telemetry event is made.
 
 ## Open Questions
 

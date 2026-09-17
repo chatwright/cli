@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -117,6 +118,8 @@ func newRootCommandWithSelfUpdateConfig(stdin io.Reader, updateConfig selfupdate
 		newCompletionCommand(),
 		newSelfUpdateCommandWithConfig(updateConfig, stdin),
 		newSkillsCommand(),
+		newInstallCommand(),
+		newUpgradeCommandWithConfig(updateConfig, stdin),
 	)
 	return root
 }
@@ -131,10 +134,16 @@ func newPlatformsCommand() *cobra.Command {
 }
 
 func newVersionCommand() *cobra.Command {
-	return &cobra.Command{Use: "version", Short: "Print CLI, runtime and SDK versions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "version", Short: "Print CLI, runtime and SDK versions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		asJSON, _ := cmd.Flags().GetBool("json")
+		if asJSON {
+			return writeVersionJSON(cmd.OutOrStdout())
+		}
 		printVersion(cmd.OutOrStdout())
 		return nil
 	}}
+	cmd.Flags().Bool("json", false, "print version, commit and build date as one JSON object")
+	return cmd
 }
 
 // printVersion prints the CLI's own build identity (name, version, commit,
@@ -151,4 +160,38 @@ func printVersion(w io.Writer) {
 		_, _ = fmt.Fprintf(w, "sdk: %s %s\n", sdkModulePath, v)
 	}
 	_, _ = fmt.Fprintf(w, "run-bundle format: %s\n", sdk.FormatV1)
+}
+
+// versionJSON is chatwright's `version --json` document: the fleet-wide
+// buildinfo.VersionJSON contract (cli-install#req:version-json-contract)
+// plus the two extra keys chatwright's own plain-text `version` output
+// already carries — the resolved sdk/runtime module versions (see
+// sdkModulePath's doc comment). Readers MUST ignore keys they don't
+// recognize, per that REQ, so adding runtime/sdk here never breaks a
+// fleet-wide prober that only reads the shared keys.
+type versionJSON struct {
+	buildinfo.VersionJSON
+	Runtime string `json:"runtime,omitempty"`
+	SDK     string `json:"sdk,omitempty"`
+}
+
+// writeVersionJSON prints exactly one JSON object to w and nothing else,
+// performing no network I/O, writes, daemon starts, update checks or
+// telemetry (cli-install#req:version-json-side-effect-free): it reads only
+// the build identity already resolved by cliBuildInfo (link-time -X values
+// or runtime/debug.ReadBuildInfo(), both pure local reads) and the running
+// binary's own recorded module dependency versions via depVersion, which is
+// the same local, side-effect-free read printVersion above already uses for
+// its runtime/sdk lines.
+func writeVersionJSON(w io.Writer) error {
+	vj := versionJSON{VersionJSON: cliBuildInfo().JSON()}
+	if v := depVersion(runtimeModulePath); v != "" {
+		vj.Runtime = v
+	}
+	if v := depVersion(sdkModulePath); v != "" {
+		vj.SDK = v
+	}
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	return enc.Encode(vj)
 }

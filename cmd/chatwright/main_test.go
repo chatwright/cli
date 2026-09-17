@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,42 @@ func TestRunVersionFlag(t *testing.T) {
 		if got := stdout.String(); got != want+"\n" {
 			t.Fatalf("run(%s) stdout = %q, want %q", flag, got, want+"\n")
 		}
+	}
+}
+
+// AC: cli-install#req:version-json-contract — `chatwright version --json`
+// prints exactly one JSON object to stdout and nothing else, carrying the
+// fleet-wide buildinfo.VersionJSON keys plus chatwright's own runtime/sdk
+// extras.
+func TestRunVersionJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"version", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("run(version --json) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("run(version --json) stderr = %q, want empty", stderr.String())
+	}
+
+	var got versionJSON
+	dec := json.NewDecoder(&stdout)
+	if err := dec.Decode(&got); err != nil {
+		t.Fatalf("decode stdout = %q: %v", stdout.String(), err)
+	}
+	if dec.More() {
+		t.Fatalf("stdout carried more than one JSON document: %q", stdout.String())
+	}
+
+	want := cliBuildInfo().JSON()
+	if got.Name != want.Name || got.Version != want.Version || got.Commit != want.Commit ||
+		got.Date != want.Date || got.DateSource != want.DateSource {
+		t.Fatalf("version --json = %+v, want fields matching buildinfo.Info.JSON() %+v", got, want)
+	}
+	if got.Runtime == "" {
+		t.Error("version --json Runtime is empty, want the resolved chatwright.dev/runtime module version")
+	}
+	if got.SDK == "" {
+		t.Error("version --json SDK is empty, want the resolved chatwright.dev/sdk module version")
 	}
 }
 

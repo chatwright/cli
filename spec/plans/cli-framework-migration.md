@@ -58,6 +58,14 @@ completion commands.
 
 None at this time.
 
+## Deferred AC Coverage
+
+- self-update#ac:version-json-is-side-effect-free — added to the self-update
+  Feature later (M7 fix, cli-install review-laneB), documenting `chatwright
+  version --json`'s existing behavior; covered by
+  `cmd/chatwright/main_test.go`'s version-JSON tests, not by a task in this
+  already-Implemented plan.
+
 ---
 
 ## Resolution
