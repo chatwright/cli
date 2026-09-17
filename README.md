@@ -50,6 +50,7 @@ Commands:
   self-update   Update the installed binary in place (chatwright self-update --help);
                 also available as "chatwright update"
   install       List and install fleet CLIs relevant to chatwright (chatwright install --help)
+  upgrade       Upgrade installed fleet CLIs, including chatwright itself (chatwright upgrade --help)
   skills        Install Chatwright Agent Skills into supported harnesses
   version       Print the CLI, runtime and sdk versions
   help          Show this help
@@ -136,6 +137,23 @@ chatwright's own command wiring versus the shared library's behavior. Exit
 codes follow the same `0`/`1`/`2` convention as `chatwright self-update`, and
 an unknown target name is refused before any confirmation, network request,
 or write.
+
+### `chatwright upgrade`
+
+The fleet-wide counterpart to `self-update`: reports and upgrades every
+*installed* catalog CLI, including chatwright itself:
+
+```sh
+chatwright upgrade                # report every installed catalog CLI plus chatwright; changes nothing
+chatwright upgrade --all          # upgrade every installed catalog CLI plus chatwright
+chatwright upgrade --all --check  # report upgrade availability only; changes nothing
+chatwright upgrade specscore      # show details/plan for specscore, confirm once, upgrade it
+```
+
+`chatwright self-update` is exactly `chatwright upgrade chatwright`: both
+build from the same release identity, so they never disagree. `upgrade`
+carries no `update` alias — that alias stays on `self-update` only. Same
+exit-code convention and unknown-target refusal as `install` above.
 
 ### `chatwright skills sync`
 

@@ -15,8 +15,16 @@ status: Implementing
 `chatwright install` lists the other fleet CLIs relevant to chatwright
 (`specscore`, per the fleet catalog's relevance matrix), each with its live
 installed status, and `chatwright install <name>...` installs named ones
-consistently with how chatwright itself was installed. The behavior is not
-specified here: chatwright binds the shared
+consistently with how chatwright itself was installed. `chatwright upgrade`
+is the fleet-wide counterpart: `chatwright upgrade` (no arguments) reports
+every installed catalog CLI plus chatwright itself — current version, latest
+stable release, and verdict — without changing anything;
+`chatwright upgrade --all`/`chatwright upgrade <name>...` upgrade what the
+report showed. `chatwright self-update` is `chatwright upgrade chatwright`:
+both reach the exact same library call, because chatwright is always
+upgraded last and classified from its own self-update Config, never a
+`PATH` probe of its own binary. The behavior is not specified here:
+chatwright binds the shared
 [strongo/cli-helpers](https://specscore.studio/app/github.com/strongo/cli-helpers/spec/features/cli-install?op=explore)
 library (`github.com/strongo/cli-helpers/cliinstall`), whose Feature owns the
 catalog, status probing, destination policy, Homebrew-cask and direct-release
@@ -34,6 +42,14 @@ chatwright install specscore --yes                # install it, skipping the con
 chatwright install specscore --dry-run            # report the plan without installing anything
 chatwright install nosuchcli                     # refused before any confirmation, network request, or write
 chatwright install --format json                 # machine-readable listing/result
+
+chatwright upgrade                                # report every installed catalog CLI plus chatwright, unchanged
+chatwright upgrade --all                          # upgrade every installed catalog CLI plus chatwright
+chatwright upgrade specscore --yes                 # upgrade it, skipping the confirmation prompt
+chatwright upgrade --all --check                   # report upgrade availability only; change nothing
+chatwright upgrade specscore --dry-run              # report the plan without upgrading anything
+chatwright upgrade nosuchcli                       # refused before any confirmation, network request, or write
+chatwright self-update                             # equivalent to `chatwright upgrade chatwright`
 ```
 
 ## Problem
@@ -77,6 +93,22 @@ package-manager invocation code.
 The command MUST expose `--all`, `--yes` (short `-y`), `--dry-run`, `--dir`,
 and `--format text|json`, bound to the library's corresponding options.
 
+#### REQ: upgrade-command
+
+The CLI MUST expose `chatwright upgrade [name...]`, built from
+`github.com/strongo/cli-helpers/cliinstall/cobracmd`'s `cobracmd.NewUpgrade`
+rather than reimplementing any of its behavior. The command inherits the
+library's full upgrade flag surface — `--all`, `--check`, `--yes`/`-y`,
+`--dry-run`, and `--format text|json` — none of which is re-specified here,
+and MUST carry no `update` alias (cli-install#req:update-alias-policy:
+chatwright's own `update` alias stays on `self-update` only). `upgrade`'s
+`HostConfig` MUST be the exact SAME `selfupdate.Config` value
+`newRootCommandWithSelfUpdateConfig` passes to `self-update`, so `chatwright
+self-update` and `chatwright upgrade chatwright` reach the identical library
+call (cli-install#req:self-update-equals-upgrade-self,
+cli-install#req:host-target-is-running-binary). chatwright's self-update
+configures no after-update hook, so `HostAfterUpdate` is left nil.
+
 ### chatwright's configuration of the library
 
 #### REQ: chatwright-host-identity
@@ -109,12 +141,22 @@ No message from this command carries a `self-update:` prefix, so a script
 that greps for one to distinguish the two commands cannot mistake one for the
 other.
 
+#### REQ: upgrade-exit-code-contract
+
+`chatwright upgrade` MUST use the exact SAME `installErrors` mapper
+`install` uses (cli-install#req:host-owned-exit-codes: "The upgrade command
+MUST use the same error mapper"). It declares no upgrades-available method,
+so `upgrade --check` never signals a dedicated exit code for an available
+update — matching `self-update`'s own `UpdateAvailable`, which always
+returns nil (informational only, never a failure). `upgrade nosuchcli` MUST
+exit `2` and name the unknown target, matching `install nosuchcli` exactly.
+
 ## Interaction with Other Features
 
 | Feature | Interaction |
 |---|---|
 | [strongo/cli-helpers: CLI Install Command Library](https://specscore.studio/app/github.com/strongo/cli-helpers/spec/features/cli-install?op=explore) | Owns the behavior contract this Feature binds. chatwright is a consumer; behavior changes belong there. |
-| [Self-Update](../self-update/README.md) | Sibling command built on the same fleet catalog entry (`cliinstall.ByID("chatwright")`); `chatwright install chatwright` is reported as already installed with a `chatwright self-update` pointer rather than reinstalling. |
+| [Self-Update](../self-update/README.md) | Sibling command built on the same fleet catalog entry (`cliinstall.ByID("chatwright")`); `chatwright install chatwright` is reported as already installed with a `chatwright self-update` pointer rather than reinstalling. `chatwright self-update` and `chatwright upgrade chatwright` reach the identical library call (cli-install#req:self-update-equals-upgrade-self). |
 
 ## Acceptance Criteria
 
@@ -142,12 +184,25 @@ other.
 **When** the user runs `chatwright install <name> --yes`
 **Then** the command exits with the same code `chatwright self-update` would return for that same underlying failure kind, and the message carries no `self-update:` prefix.
 
+### AC: self-update-equals-upgrade-self
+
+**Requirements:** install#req:upgrade-command, cli-install#req:self-update-equals-upgrade-self
+
+**Given** the real `self-update` and `upgrade` commands, each built from the same `selfupdate.Config`
+**When** `chatwright self-update --check` and `chatwright upgrade chatwright --check` run against the same release state
+**Then** both report the same current/latest verdict.
+
+### AC: upgrade-unknown-target-refused
+
+**Requirements:** install#req:upgrade-exit-code-contract
+
+**Given** an installed `chatwright` binary
+**When** the user runs `chatwright upgrade nosuchcli`
+**Then** the command fails before any confirmation, network request, or write, exits `2`, and the message names the unknown target, carrying no `self-update:` prefix.
+
 ## Open Questions
 
-- Should `chatwright install` gain the `upgrade` command's own wiring once
-  `strongo/cli-helpers` ships its Cobra adapter for it? Tracked by the
-  fleet-wide [cli-install Plan](https://specscore.studio/app/github.com/strongo/cli-helpers/spec/plans/cli-install?op=explore)'s
-  task-22; out of scope for this round.
+None at this time.
 
 ---
 *This document follows the https://specscore.md/feature-specification*

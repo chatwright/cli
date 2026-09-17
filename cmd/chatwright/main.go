@@ -119,6 +119,7 @@ func newRootCommandWithSelfUpdateConfig(stdin io.Reader, updateConfig selfupdate
 		newSelfUpdateCommandWithConfig(updateConfig, stdin),
 		newSkillsCommand(),
 		newInstallCommand(),
+		newUpgradeCommandWithConfig(updateConfig),
 	)
 	return root
 }
