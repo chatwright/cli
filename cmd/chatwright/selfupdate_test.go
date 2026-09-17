@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/strongo/cli-helpers/cliinstall"
 	"github.com/strongo/cli-helpers/selfupdate"
 )
 
@@ -27,6 +28,46 @@ func TestSelfUpdateConfigIdentity(t *testing.T) {
 	if len(cfg.Managers) != 1 || cfg.Managers[0].UpgradeCommand != "brew upgrade --cask chatwright" {
 		t.Fatalf("Managers = %+v", cfg.Managers)
 	}
+}
+
+// AC: cli-install#req:catalog-identity-single-source — chatwright's Config
+// comes from the SAME compiled-in catalog entry every other fleet CLI's
+// `install chatwright` resolves, not a hand-maintained duplicate.
+func TestSelfUpdateConfig_MatchesCatalogEntry(t *testing.T) {
+	entry, ok := cliinstall.ByID("chatwright")
+	if !ok {
+		t.Fatal(`cliinstall.ByID("chatwright") not found`)
+	}
+	want := entry.Config(cliBuildInfo().Short())
+	got := selfUpdateConfig()
+	if got.BinaryName != want.BinaryName || got.Repository != want.Repository {
+		t.Errorf("selfUpdateConfig() = %+v, want built from cliinstall.ByID(\"chatwright\").Config(...): %+v", got, want)
+	}
+	if len(got.Managers) != len(want.Managers) {
+		t.Errorf("Managers = %d entries, want %d (the same catalog entry's managers)", len(got.Managers), len(want.Managers))
+	}
+	if len(got.SupportedPlatforms) != len(want.SupportedPlatforms) {
+		t.Errorf("SupportedPlatforms = %d entries, want %d (the catalog entry's own platform matrix)", len(got.SupportedPlatforms), len(want.SupportedPlatforms))
+	}
+	if len(got.UndeterminedVersions) != len(want.UndeterminedVersions) {
+		t.Errorf("UndeterminedVersions = %v, want %v (the catalog entry's own list)", got.UndeterminedVersions, want.UndeterminedVersions)
+	}
+}
+
+// cli-install#req:host-identity-from-catalog — a host id absent from the
+// compiled catalog is a programming error caught by this package's own
+// tests, never a runtime state a user can trigger.
+func TestSelfUpdateConfig_PanicsWhenCatalogEntryMissing(t *testing.T) {
+	prev := catalogEntryByID
+	catalogEntryByID = func(string) (cliinstall.Entry, bool) { return cliinstall.Entry{}, false }
+	t.Cleanup(func() { catalogEntryByID = prev })
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected selfUpdateConfig to panic when the catalog entry is missing")
+		}
+	}()
+	selfUpdateConfig()
 }
 
 func TestSelfUpdateCommandUsesSharedCobraAdapter(t *testing.T) {

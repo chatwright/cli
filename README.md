@@ -49,6 +49,7 @@ Commands:
   completion    Generate a bash/zsh/fish completion script (chatwright completion help)
   self-update   Update the installed binary in place (chatwright self-update --help);
                 also available as "chatwright update"
+  install       List and install fleet CLIs relevant to chatwright (chatwright install --help)
   skills        Install Chatwright Agent Skills into supported harnesses
   version       Print the CLI, runtime and sdk versions
   help          Show this help
@@ -59,7 +60,11 @@ Try it now — no files, no network, no API key:
 
 `chatwright version` reports the CLI's own version plus the resolved
 sdk/runtime module versions it was built against, and the supported
-run-bundle format id.
+run-bundle format id. `chatwright version --json` prints the same identity
+as one JSON object (`name`, `version`, `commit`, `date`, `date_source`, plus
+`runtime`/`sdk`) and nothing else, side-effect-free — the fleet-wide probe
+flag every other catalog CLI's `install`/`upgrade` uses to identify an
+installed `chatwright` copy.
 
 ### `chatwright run`
 
@@ -109,6 +114,28 @@ this command's exit codes (0 success — including a completed `--check`
 whatever its verdict; 1 a runtime failure no flag fixes; 2 a usage error,
 including a confirmation that was needed but neither `--yes` nor a terminal
 was available).
+
+### `chatwright install`
+
+Lists the fleet CLIs relevant to chatwright (currently `specscore`) with
+their live installed status, and installs named ones consistently with how
+chatwright itself was installed:
+
+```sh
+chatwright install                    # list relevant fleet CLIs, with live status
+chatwright install specscore           # show details, confirm once, install it
+chatwright install specscore --yes     # skip the confirmation prompt
+chatwright install specscore --dry-run # report the plan without installing anything
+```
+
+Every catalog entry, status probe, destination policy and install method
+comes from
+[`github.com/strongo/cli-helpers/cliinstall`](https://github.com/strongo/cli-helpers);
+see [spec/features/install](spec/features/install/README.md) for what is
+chatwright's own command wiring versus the shared library's behavior. Exit
+codes follow the same `0`/`1`/`2` convention as `chatwright self-update`, and
+an unknown target name is refused before any confirmation, network request,
+or write.
 
 ### `chatwright skills sync`
 
