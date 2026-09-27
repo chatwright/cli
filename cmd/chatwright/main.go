@@ -40,12 +40,14 @@ func cliBuildInfo() buildinfo.Info {
 	return buildinfo.Get("chatwright")
 }
 
+var readBuildInfo = debug.ReadBuildInfo
+
 // depVersion returns the resolved version of the named module dependency from
 // the running binary's build info, or "" when it cannot be determined (never
 // the case for a released or go-installed binary, which always records its
 // dependency graph).
 func depVersion(path string) string {
-	bi, ok := debug.ReadBuildInfo()
+	bi, ok := readBuildInfo()
 	if !ok {
 		return ""
 	}
@@ -74,8 +76,10 @@ var platformSummaries = map[string]string{
 	"whatsapp": "text (experimental)",
 }
 
+var exitFunc = os.Exit
+
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	exitFunc(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

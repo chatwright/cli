@@ -31,18 +31,12 @@ func isProcessRunning(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = process.Signal(syscall.Signal(0))
+	process, _ := os.FindProcess(pid)
+	err := process.Signal(syscall.Signal(0))
 	if err == nil {
 		return true
 	}
 	if errors.Is(err, os.ErrProcessDone) {
-		return false
-	}
-	if errno, ok := err.(syscall.Errno); ok && errno == syscall.ESRCH {
 		return false
 	}
 	// Any other error (e.g. EPERM) still means the process exists.
@@ -56,11 +50,8 @@ func isProcessRunning(pid int) bool {
 // (nothing left to terminate), not an error — the same
 // os.ErrProcessDone translation isProcessRunning relies on.
 func terminate(pid int) error {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	err = process.Signal(syscall.SIGTERM)
+	process, _ := os.FindProcess(pid)
+	err := process.Signal(syscall.SIGTERM)
 	if errors.Is(err, os.ErrProcessDone) {
 		return nil
 	}

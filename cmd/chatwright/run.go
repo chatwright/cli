@@ -31,6 +31,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	scenarioBuild              = scenario.Build
+	materializeExampleTempFunc = materializeExampleTemp
+	interruptibleContextFunc   = interruptibleContext
+	writeRunJSONResultFunc     = writeRunJSONResult
+	assembleRunBundleFunc      = assembleRunBundle
+	sdkWrite                   = sdk.Write
+)
+
 // exitActorUnavailable is `chatwright run`'s exit code for a run whose actor
 // was never able to act at all — most commonly a cassette replay cache
 // miss — as opposed to exitVerificationFailed, which means the actor ran
@@ -127,7 +136,7 @@ func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
 	// Ctrl-C during Execute below actually does, and what it deliberately
 	// does not (a purely deterministic Part has no ctx-aware interception
 	// point at all).
-	ctx, cancelInterrupt, interrupted := interruptibleContext(context.Background())
+	ctx, cancelInterrupt, interrupted := interruptibleContextFunc(context.Background())
 	defer cancelInterrupt()
 
 	// A real file on disk always wins over the built-in example: silently
@@ -135,7 +144,7 @@ func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
 	// "example" is a legal filename. Only when nothing of that name exists
 	// does the argument mean "run the embedded worked example".
 	if docPath == exampleDocumentArg && !fileExists(docPath) {
-		materialized, cleanup, err := materializeExampleTemp()
+		materialized, cleanup, err := materializeExampleTempFunc()
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 			return 1
@@ -161,7 +170,7 @@ func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
 		}
 	}
 
-	built, err := scenario.Build(ctx, doc, scenario.BuildOptions{})
+	built, err := scenarioBuild(ctx, doc, scenario.BuildOptions{})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 		return 1
@@ -206,7 +215,7 @@ func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	b, outcome, err := assembleRunBundle(doc, built, result)
+	b, outcome, err := assembleRunBundleFunc(doc, built, result)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 		return 1
@@ -222,14 +231,9 @@ func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "chatwright run: %v\n", err)
 		return 1
 	}
-	writeErr := sdk.Write(f, b)
-	closeErr := f.Close()
-	if writeErr != nil {
-		_, _ = fmt.Fprintf(stderr, "chatwright run: write %s: %v\n", bundlePath, writeErr)
-		return 1
-	}
-	if closeErr != nil {
-		_, _ = fmt.Fprintf(stderr, "chatwright run: close %s: %v\n", bundlePath, closeErr)
+	defer func() { _ = f.Close() }()
+	if err := sdkWrite(f, b); err != nil {
+		_, _ = fmt.Fprintf(stderr, "chatwright run: write %s: %v\n", bundlePath, err)
 		return 1
 	}
 
@@ -244,7 +248,7 @@ func executeRun(docPath string, opts runOptions, stdout, stderr io.Writer) int {
 		// --json's own contract (documented in printRunUsage): exactly one
 		// JSON object on stdout, never suppressed by --quiet — the human
 		// summary below is skipped entirely instead, never both.
-		if err := writeRunJSONResult(stdout, buildRunJSONResult(outcome, wasInterrupted, duration, usage, bundlePath, report.Warnings())); err != nil {
+		if err := writeRunJSONResultFunc(stdout, buildRunJSONResult(outcome, wasInterrupted, duration, usage, bundlePath, report.Warnings())); err != nil {
 			_, _ = fmt.Fprintf(stderr, "chatwright run: encode result: %v\n", err)
 			return 1
 		}
