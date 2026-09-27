@@ -25,6 +25,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	serverStart       = server.Start
+	serverStop        = server.Stop
+	osExecutable      = os.Executable
+	notifyContextFunc = signal.NotifyContext
+)
+
 // Environment variable names the server subcommands fall back to when the
 // corresponding flag is not given, in the usual "flag overrides env
 // overrides fixed default" order.
@@ -93,7 +100,7 @@ func executeServerServe(f serverStartFlags, stdout, stderr io.Writer) int {
 
 	// Created before the server so a --ui download can itself be
 	// interrupted by Ctrl-C/SIGTERM rather than only the eventual listener.
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := notifyContextFunc(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	resolvedUIDir, err := resolveServeUIDir(ctx, f.uiDir, f.uiEnabled, f.uiURL, logger)
@@ -180,7 +187,7 @@ func (f *serverStartFlags) pidPath() string { return filepath.Join(f.stateDir, "
 func (f *serverStartFlags) logPath() string { return filepath.Join(f.stateDir, "server.log") }
 
 func executeServerRestart(f *serverStartFlags, stdout, stderr io.Writer) int {
-	if err := server.Stop(f.pidPath(), 0); err != nil && !errors.Is(err, server.ErrNotRunning) {
+	if err := serverStop(f.pidPath(), 0); err != nil && !errors.Is(err, server.ErrNotRunning) {
 		_, _ = fmt.Fprintf(stderr, "chatwright server restart: stopping: %v\n", err)
 		return 1
 	}
@@ -198,7 +205,7 @@ func startDaemon(f *serverStartFlags, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	exe, err := os.Executable()
+	exe, err := osExecutable()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright server start: resolving own executable: %v\n", err)
 		return 1
@@ -225,7 +232,7 @@ func startDaemon(f *serverStartFlags, stdout, stderr io.Writer) int {
 	// entire environment by default, and the child parses its own flags
 	// with the same envOrDefault fallbacks.
 
-	pid, err := server.Start(server.StartOptions{
+	pid, err := serverStart(server.StartOptions{
 		Executable: exe,
 		Args:       childArgs,
 		PIDFile:    f.pidPath(),
@@ -246,7 +253,7 @@ func runServerStop(args []string, stdout, stderr io.Writer) int {
 }
 
 func executeServerStop(stateDir string, stdout, stderr io.Writer) int {
-	err := server.Stop(filepath.Join(stateDir, "server.pid"), 0)
+	err := serverStop(filepath.Join(stateDir, "server.pid"), 0)
 	switch {
 	case err == nil:
 		_, _ = fmt.Fprintln(stdout, "chatwright server stopped")

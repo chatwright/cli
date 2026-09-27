@@ -29,6 +29,13 @@ import (
 // recompute the report without re-running any model.
 const resultsFileName = "results.json"
 
+var (
+	arenaRun          = arena.Run
+	arenaWriteReport  = arena.WriteReport
+	arenaWriteOutputs = writeArenaOutputs
+	arenaReadResults  = readArenaResults
+)
+
 func runArena(args []string, stdout, stderr io.Writer) int {
 	return run(append([]string{"arena"}, args...), stdout, stderr)
 }
@@ -50,13 +57,13 @@ func executeArenaRun(configPath, outDir string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	results, err := arena.Run(context.Background(), matrix, opts)
+	results, err := arenaRun(context.Background(), matrix, opts)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
 
-	if err := writeArenaOutputs(outDir, results); err != nil {
+	if err := arenaWriteOutputs(outDir, results); err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena run: %v\n", err)
 		return 1
 	}
@@ -75,7 +82,7 @@ func runArenaReport(args []string, stdout, stderr io.Writer) int {
 }
 
 func executeArenaReport(dir string, stdout, stderr io.Writer) int {
-	results, warnings, err := readArenaResults(dir)
+	results, warnings, err := arenaReadResults(dir)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
 		return 1
@@ -90,14 +97,9 @@ func executeArenaReport(dir string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
 		return 1
 	}
-	writeErr := arena.WriteReport(f, results)
-	closeErr := f.Close()
-	if writeErr != nil {
-		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", writeErr)
-		return 1
-	}
-	if closeErr != nil {
-		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", closeErr)
+	defer func() { _ = f.Close() }()
+	if err := arenaWriteReport(f, results); err != nil {
+		_, _ = fmt.Fprintf(stderr, "chatwright arena report: %v\n", err)
 		return 1
 	}
 

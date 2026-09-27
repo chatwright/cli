@@ -11,10 +11,7 @@ import (
 )
 
 func TestNewSkillsSyncConfigBindsEmbeddedChatwrightPlugin(t *testing.T) {
-	cfg, err := newSkillsSyncConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := newSkillsSyncConfig()
 	if cfg.CLI != chatwrightSkillsCLI {
 		t.Errorf("CLI = %+v, want %+v", cfg.CLI, chatwrightSkillsCLI)
 	}

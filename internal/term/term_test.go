@@ -158,3 +158,37 @@ func TestFormatDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestNewProfile(t *testing.T) {
+	p := NewProfile(nil, fakeEnv(map[string]string{"LANG": "en_US.UTF-8", "CLICOLOR_FORCE": "1"}))
+	if p.Interactive {
+		t.Errorf("NewProfile(nil).Interactive = true, want false")
+	}
+	if !p.Color {
+		t.Errorf("NewProfile(nil).Color = false, want true")
+	}
+	if p.ASCII {
+		t.Errorf("NewProfile(nil).ASCII = true, want false")
+	}
+}
+
+func TestIsTerminalClosedFile(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "term-test")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	_ = f.Close()
+	// Operating on closed file stat might succeed or error depending on OS, but f was closed or deleted
+	_ = os.Remove(f.Name())
+	// Let's test with f which has invalid descriptor
+	if IsTerminal(f) {
+		t.Errorf("IsTerminal(closed/deleted) = true, want false")
+	}
+}
+
+func TestColorizeEmptyString(t *testing.T) {
+	on := Profile{Color: true}
+	if got := on.Bold(""); got != "" {
+		t.Errorf("Bold(\"\") = %q, want empty string", got)
+	}
+}

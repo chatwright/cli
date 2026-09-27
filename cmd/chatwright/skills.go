@@ -23,7 +23,7 @@ var (
 )
 
 func newSkillsCommand() *cobra.Command {
-	cfg, cfgErr := newSkillsSyncConfig()
+	cfg := newSkillsSyncConfig()
 	cmd := skillscmd.New(cfg, skillscmd.CommandOptions{
 		Short:  "Install Chatwright Agent Skills into a harness skills directory",
 		Errors: skillsSyncErrors{},
@@ -44,11 +44,6 @@ to explicitly select a newer compatible published bundle.
 
 With no target, every present Claude, Cursor, and Codex harness is synced. Use
 --harness to select a harness or --dir to select an explicit skills directory.`
-	if cfgErr != nil {
-		cmd.RunE = func(*cobra.Command, []string) error {
-			return fmt.Errorf("prepare embedded Chatwright skills: %w", cfgErr)
-		}
-	}
 	return cmd
 }
 
@@ -68,14 +63,21 @@ func (skillsSyncErrors) Conflict(report skillsync.Report) error {
 		len(report.Names(skillsync.Conflict)), report.Dir)}
 }
 
-func newSkillsSyncConfig() (skillsync.Config, error) {
-	source, err := fs.Sub(chatwrightplugin.SkillsFS, "skills")
+var (
+	skillsFSSub              = fs.Sub
+	skillsDigest             = skillsync.Digest
+	skillsValidateDescriptor = skillsync.ValidateDescriptor
+	skillsEmbeddedBundle     = skillsync.EmbeddedBundle
+)
+
+func newSkillsSyncConfig() skillsync.Config {
+	source, err := skillsFSSub(chatwrightplugin.SkillsFS, "skills")
 	if err != nil {
-		return skillsync.Config{}, err
+		panic(err)
 	}
-	digest, err := skillsync.Digest(source)
+	digest, err := skillsDigest(source)
 	if err != nil {
-		return skillsync.Config{}, err
+		panic(err)
 	}
 	build := cliBuildInfo()
 	revision := build.Commit
@@ -96,18 +98,18 @@ func newSkillsSyncConfig() (skillsync.Config, error) {
 			Digest:     digest,
 		},
 	}
-	if err := skillsync.ValidateDescriptor(descriptor); err != nil {
-		return skillsync.Config{}, fmt.Errorf("validate embedded Chatwright skills descriptor: %w", err)
+	if err := skillsValidateDescriptor(descriptor); err != nil {
+		panic(err)
 	}
-	bundle, err := skillsync.EmbeddedBundle(descriptor, source)
+	bundle, err := skillsEmbeddedBundle(descriptor, source)
 	if err != nil {
-		return skillsync.Config{}, fmt.Errorf("bind embedded Chatwright skills: %w", err)
+		panic(err)
 	}
 	return skillsync.Config{
 		CLI:            chatwrightSkillsCLI,
 		CurrentVersion: build.Version,
 		Bundles:        []skillsync.Bundle{bundle},
-	}, nil
+	}
 }
 
 func addJSONShortcut(cmd *cobra.Command) {
