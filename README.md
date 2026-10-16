@@ -10,6 +10,12 @@ run-bundle wire model in
 [`chatwright.dev/sdk`](https://github.com/chatwright/sdk-go); this binary
 fronts them from a terminal.
 
+## DataTug in the wider development toolbox
+
+[DataTug](https://datatug.app) is our flagship product. Chatwright's proposed
+data-assertion investigation handoff to DataTug is still design work; the CLI
+does not provide that integration. Read [how we build DataTug with our tools](https://datatug.app/en/under-the-hood/tools-we-built/).
+
 ## Install
 
 Canonical (macOS/Linux):
