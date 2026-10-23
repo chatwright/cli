@@ -356,9 +356,9 @@ func TestArenaResultsCoverage(t *testing.T) {
 					{Repeat: 2, BundleName: ""},
 					{
 						Repeat: 3, BundleName: "bundle3.json",
-						Bundle: sdk.Bundle{Format: sdk.FormatV1},
+						Bundle:    sdk.Bundle{Format: sdk.FormatV1},
 						Latencies: []time.Duration{100 * time.Millisecond},
-						Calls: []arena.CallRecord{{Index: 1, Wall: 50 * time.Millisecond}},
+						Calls:     []arena.CallRecord{{Index: 1, Wall: 50 * time.Millisecond}},
 					},
 				},
 			},
