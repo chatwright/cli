@@ -199,8 +199,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		shutdownErr := httpSrv.Shutdown(shutdownCtx)
 		// Serve returns http.ErrServerClosed once Shutdown is called; wait for it
 		// to actually return before this method does.
-		_ = <-serveErr
-		return shutdownErr
+		return errors.Join(shutdownErr, unexpectedServeError(<-serveErr))
 	}
 }
 
@@ -259,3 +258,12 @@ func methodNotAllowed(w http.ResponseWriter, allow ...string) {
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// unexpectedServeError drops the http.ErrServerClosed that Serve returns after
+// a graceful Shutdown and keeps any other error.
+func unexpectedServeError(err error) error {
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
