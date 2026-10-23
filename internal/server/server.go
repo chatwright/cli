@@ -197,7 +197,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		shutdownErr := httpSrv.Shutdown(shutdownCtx)
-		<-serveErr // wait for Serve to actually return before this method does
+		// Serve returns http.ErrServerClosed once Shutdown is called; wait for it
+		// to actually return before this method does.
+		_ = <-serveErr
 		return shutdownErr
 	}
 }
