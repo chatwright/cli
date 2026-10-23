@@ -116,7 +116,7 @@ func (s *Server) handleDatastateQuery(w http.ResponseWriter, r *http.Request) {
 	evidence, _ := s.runner.Run(r.Context(), datastate.AttachmentAfterMessage, datastate.Assertion{
 		Name:   "datastate-query",
 		Holder: req.Holder,
-		Query:  datastate.Query{DTQL: req.Query, Params: req.Params},
+		Query:  datastate.Query{TugQL: req.Query, Params: req.Params},
 		Expect: expectation,
 	})
 
@@ -180,7 +180,7 @@ func buildOneExpectation(spec expectationSpec) (datastate.Expectation, error) {
 
 // FixtureStore is an in-memory, exact-match stand-in for a real
 // datastate.Executor. It is NOT a TugQL engine — see this file's package doc
-// comment. Query.DTQL text is trimmed and used as a literal lookup key into
+// comment. Query.TugQL text is trimmed and used as a literal lookup key into
 // canned rows an operator pre-loads per holder.
 type FixtureStore struct {
 	data map[string]map[string][]datastate.Row // holder -> trimmed TugQL text -> rows
@@ -240,9 +240,9 @@ func (f *FixtureStore) Execute(_ context.Context, handle any, query datastate.Qu
 	if !ok {
 		return nil, fmt.Errorf("fixture store: unexpected handle type %T", handle)
 	}
-	rows, ok := byQuery[strings.TrimSpace(query.DTQL)]
+	rows, ok := byQuery[strings.TrimSpace(query.TugQL)]
 	if !ok {
-		return nil, fmt.Errorf("fixture store: no fixture recorded for query %q", query.DTQL)
+		return nil, fmt.Errorf("fixture store: no fixture recorded for query %q", query.TugQL)
 	}
 	return rows, nil
 }

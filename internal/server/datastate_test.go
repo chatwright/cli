@@ -231,7 +231,7 @@ func TestFixtureStoreExecuteUnknownHandleType(t *testing.T) {
 	store := NewFixtureStore(map[string]map[string][]datastate.Row{
 		"h": {"q": {{"ok": true}}},
 	})
-	_, err := store.Execute(context.Background(), "not-the-right-handle-type", datastate.Query{DTQL: "q"})
+	_, err := store.Execute(context.Background(), "not-the-right-handle-type", datastate.Query{TugQL: "q"})
 	if err == nil {
 		t.Fatal("Execute() with wrong handle type = nil error, want an error")
 	}
