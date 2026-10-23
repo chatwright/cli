@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -15,8 +16,9 @@ func TestRunVersion(t *testing.T) {
 	}
 	got := stdout.String()
 	lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
-	if lines[0] != "chatwright "+cliVersion() {
-		t.Fatalf("run(version) first line = %q, want %q", lines[0], "chatwright "+cliVersion())
+	want := cliBuildInfo().Long()
+	if lines[0] != want {
+		t.Fatalf("run(version) first line = %q, want %q", lines[0], want)
 	}
 	// The split's contract: version reports the resolved runtime and sdk
 	// module versions from build info alongside the CLI's own.
@@ -28,6 +30,58 @@ func TestRunVersion(t *testing.T) {
 	}
 	if !strings.Contains(got, "run-bundle format: https://chatwright.dev/formats/run-bundle/v1") {
 		t.Fatalf("run(version) stdout = %q, want the run-bundle format line", got)
+	}
+}
+
+func TestRunVersionFlag(t *testing.T) {
+	want := cliBuildInfo().Short()
+
+	for _, flag := range []string{"--version", "-v"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+
+		if code := run([]string{flag}, &stdout, &stderr); code != 0 {
+			t.Fatalf("run(%s) exit code = %d, want 0; stderr = %q", flag, code, stderr.String())
+		}
+		if got := stdout.String(); got != want+"\n" {
+			t.Fatalf("run(%s) stdout = %q, want %q", flag, got, want+"\n")
+		}
+	}
+}
+
+// AC: cli-install#req:version-json-contract — `chatwright version --json`
+// prints exactly one JSON object to stdout and nothing else, carrying the
+// fleet-wide buildinfo.VersionJSON keys plus chatwright's own runtime/sdk
+// extras.
+func TestRunVersionJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"version", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("run(version --json) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("run(version --json) stderr = %q, want empty", stderr.String())
+	}
+
+	var got versionJSON
+	dec := json.NewDecoder(&stdout)
+	if err := dec.Decode(&got); err != nil {
+		t.Fatalf("decode stdout = %q: %v", stdout.String(), err)
+	}
+	if dec.More() {
+		t.Fatalf("stdout carried more than one JSON document: %q", stdout.String())
+	}
+
+	want := cliBuildInfo().JSON()
+	if got.Name != want.Name || got.Version != want.Version || got.Commit != want.Commit ||
+		got.Date != want.Date || got.DateSource != want.DateSource {
+		t.Fatalf("version --json = %+v, want fields matching buildinfo.Info.JSON() %+v", got, want)
+	}
+	if got.Runtime == "" {
+		t.Error("version --json Runtime is empty, want the resolved chatwright.dev/runtime module version")
+	}
+	if got.SDK == "" {
+		t.Error("version --json SDK is empty, want the resolved chatwright.dev/sdk module version")
 	}
 }
 
@@ -59,5 +113,40 @@ func TestRunUnknownCommand(t *testing.T) {
 	}
 	if got := stderr.String(); !strings.Contains(got, "unknown command") {
 		t.Fatalf("run(unknown) stderr = %q, want unknown-command message", got)
+	}
+}
+
+func TestRunWithoutArgumentsShowsRootHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Available Commands:") ||
+		!strings.Contains(stdout.String(), "self-update") ||
+		!strings.Contains(stdout.String(), "skills") {
+		t.Fatalf("root help = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "chatwright run example") {
+		t.Fatalf("root help = %q, want the offline first-use example", stdout.String())
+	}
+}
+
+func TestLegacyBareHelpFormsUsePublicRoot(t *testing.T) {
+	for _, args := range [][]string{
+		{"arena", "help"},
+		{"server", "help"},
+		{"completion", "help"},
+		{"self-update", "help"},
+		{"update", "help"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(args, &stdout, &stderr); code != 0 {
+				t.Fatalf("run(%q) code=%d, want 0; stderr=%q", args, code, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "Usage:") {
+				t.Fatalf("run(%q) stdout=%q, want Cobra help", args, stdout.String())
+			}
+		})
 	}
 }

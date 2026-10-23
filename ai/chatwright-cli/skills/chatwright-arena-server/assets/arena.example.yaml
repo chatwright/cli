@@ -1,0 +1,13 @@
+# Copy this file, then replace each provider with a model endpoint that exists.
+scenario: greetbot-language-onboarding
+repeats: 3
+hardware: "declare the machine used for this run"
+budgets:
+  maxSteps: 12
+  maxDuration: 4m
+providers:
+  - kind: ollama
+    label: ollama/local-model
+    baseUrl: http://127.0.0.1:11434/v1
+    model: replace-with-a-local-model
+    contextLength: 8192

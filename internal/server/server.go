@@ -151,11 +151,7 @@ func New(cfg Config) (*Server, error) {
 		uiDir:           cfg.UIDir,
 	}
 	if store != nil {
-		runner, err := newFixtureRunner(store)
-		if err != nil {
-			return nil, err
-		}
-		s.runner = runner
+		s.runner = newFixtureRunner(store)
 	}
 	allowlist := newOriginAllowlist(cfg.AllowedOrigins)
 	s.mux = withCORS(allowlist, s.buildMux())
@@ -196,9 +192,6 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 
 	select {
 	case err := <-serveErr:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
 		return err
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)

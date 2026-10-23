@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -15,18 +16,10 @@ import (
 	"chatwright.dev/runtime/telegram"
 	"chatwright.dev/runtime/whatsapp"
 	"chatwright.dev/sdk"
+	"github.com/spf13/cobra"
+	"github.com/strongo/buildinfo"
+	"github.com/strongo/cli-helpers/selfupdate"
 )
-
-// version is this CLI's own release version, injected by GoReleaser via
-// -ldflags "-X main.version={{.Version}}" at release-build time. When empty
-// (a `go install chatwright.dev/cli/cmd/chatwright@vX.Y.Z` build, or a plain
-// `go build` inside this repository), cliVersion falls back to the module
-// version recorded in the binary's build info.
-var version string
-
-// fallbackVersion is used when neither the injected version nor build info
-// carries a module version (e.g. a plain `go build` inside the repo).
-const fallbackVersion = "devel"
 
 // sdkModulePath and runtimeModulePath name the two Chatwright modules whose
 // resolved versions `chatwright version` reports alongside the CLI's own —
@@ -38,22 +31,23 @@ const (
 	runtimeModulePath = "chatwright.dev/runtime"
 )
 
-func cliVersion() string {
-	if version != "" {
-		return version
-	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
-		return bi.Main.Version
-	}
-	return fallbackVersion
+// cliBuildInfo resolves this CLI's own build identity: the injected
+// -ldflags -X values from GoReleaser (see .goreleaser.yml), falling back to
+// runtime/debug.ReadBuildInfo() for a `go install`/`go build` binary. See
+// github.com/strongo/buildinfo — every CLI in this fleet shares this one
+// implementation instead of hand-rolling its own version plumbing.
+func cliBuildInfo() buildinfo.Info {
+	return buildinfo.Get("chatwright")
 }
+
+var readBuildInfo = debug.ReadBuildInfo
 
 // depVersion returns the resolved version of the named module dependency from
 // the running binary's build info, or "" when it cannot be determined (never
 // the case for a released or go-installed binary, which always records its
 // dependency graph).
 func depVersion(path string) string {
-	bi, ok := debug.ReadBuildInfo()
+	bi, ok := readBuildInfo()
 	if !ok {
 		return ""
 	}
@@ -82,51 +76,87 @@ var platformSummaries = map[string]string{
 	"whatsapp": "text (experimental)",
 }
 
+var exitFunc = os.Exit
+
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	exitFunc(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		printUsage(stdout)
-		return 0
-	}
-
-	switch args[0] {
-	case "help", "-h", "--help":
-		printUsage(stdout)
-		return 0
-	case "version", "--version":
-		printVersion(stdout)
-		return 0
-	case "platforms":
-		for _, p := range builtinPlatforms() {
-			_, _ = fmt.Fprintf(stdout, "%s\t%s\n", p.Name(), platformSummaries[p.Name()])
-		}
-		return 0
-	case "arena":
-		return runArena(args[1:], stdout, stderr)
-	case "run":
-		return runRun(args[1:], stdout, stderr)
-	case "server":
-		return runServer(args[1:], stdout, stderr)
-	case "completion":
-		return runCompletion(args[1:], stdout, stderr)
-	case "self-update", "update":
-		return runSelfUpdate(args[1:], os.Stdin, stdout, stderr)
-	default:
-		_, _ = fmt.Fprintf(stderr, "chatwright: unknown command %q\n\n", args[0])
-		printUsage(stderr)
-		return 2
-	}
+	return executeCommand(newRootCommand(os.Stdin), args, stdout, stderr)
 }
 
-// printVersion prints the CLI's own version followed by the resolved
+func newRootCommand(stdin io.Reader) *cobra.Command {
+	return newRootCommandWithSelfUpdateConfig(stdin, selfUpdateConfig())
+}
+
+func newRootCommandWithSelfUpdateConfig(stdin io.Reader, updateConfig selfupdate.Config) *cobra.Command {
+	root := &cobra.Command{
+		Use:   "chatwright",
+		Short: "Execute and inspect Chatwright scenarios",
+		Long:  "Chatwright executes self-contained messaging scenarios and writes replayable run bundles.",
+		Example: `  chatwright run example
+  chatwright run example --json --quiet
+  chatwright run example --write --out ./my-scenario`,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return commandResult(0)
+		},
+	}
+	root.Flags().BoolP("version", "v", false, "print the Chatwright CLI version")
+	root.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		version, err := cmd.Flags().GetBool("version")
+		if err != nil || !version {
+			return nil
+		}
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), cliBuildInfo().Short())
+		return &commandError{code: 0}
+	}
+	root.AddCommand(
+		newPlatformsCommand(),
+		newVersionCommand(),
+		newRunCommand(),
+		newArenaCommand(),
+		newServerCommand(),
+		newCompletionCommand(),
+		newSelfUpdateCommandWithConfig(updateConfig, stdin),
+		newSkillsCommand(),
+		newInstallCommand(),
+		newUpgradeCommandWithConfig(updateConfig, stdin),
+	)
+	return root
+}
+
+func newPlatformsCommand() *cobra.Command {
+	return &cobra.Command{Use: "platforms", Short: "List built-in messaging platform emulators", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		for _, p := range builtinPlatforms() {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", p.Name(), platformSummaries[p.Name()])
+		}
+		return nil
+	}}
+}
+
+func newVersionCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "version", Short: "Print CLI, runtime and SDK versions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		asJSON, _ := cmd.Flags().GetBool("json")
+		if asJSON {
+			return writeVersionJSON(cmd.OutOrStdout())
+		}
+		printVersion(cmd.OutOrStdout())
+		return nil
+	}}
+	cmd.Flags().Bool("json", false, "print version, commit and build date as one JSON object")
+	return cmd
+}
+
+// printVersion prints the CLI's own build identity (name, version, commit,
+// date — see github.com/strongo/buildinfo) followed by the resolved
 // sdk/runtime module versions from build info — see sdkModulePath's doc
 // comment. A dependency line is omitted when the version cannot be
 // determined, rather than printing an empty placeholder.
 func printVersion(w io.Writer) {
-	_, _ = fmt.Fprintf(w, "chatwright %s\n", cliVersion())
+	_, _ = fmt.Fprintln(w, cliBuildInfo().Long())
 	if v := depVersion(runtimeModulePath); v != "" {
 		_, _ = fmt.Fprintf(w, "runtime: %s %s\n", runtimeModulePath, v)
 	}
@@ -136,23 +166,36 @@ func printVersion(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "run-bundle format: %s\n", sdk.FormatV1)
 }
 
-func printUsage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `Chatwright CLI
+// versionJSON is chatwright's `version --json` document: the fleet-wide
+// buildinfo.VersionJSON contract (cli-install#req:version-json-contract)
+// plus the two extra keys chatwright's own plain-text `version` output
+// already carries — the resolved sdk/runtime module versions (see
+// sdkModulePath's doc comment). Readers MUST ignore keys they don't
+// recognize, per that REQ, so adding runtime/sdk here never breaks a
+// fleet-wide prober that only reads the shared keys.
+type versionJSON struct {
+	buildinfo.VersionJSON
+	Runtime string `json:"runtime,omitempty"`
+	SDK     string `json:"sdk,omitempty"`
+}
 
-Usage:
-  chatwright <command>
-
-Commands:
-  platforms     List built-in messaging platform emulators
-  run           Execute a self-contained scenario document (chatwright run --help)
-  arena         Run and report on the actor-model arena (chatwright arena help)
-  server        Run the server companion daemon (chatwright server help)
-  completion    Generate a bash/zsh/fish completion script (chatwright completion help)
-  self-update   Update the installed binary in place (chatwright self-update --help);
-                also available as "chatwright update"
-  version       Print the CLI, runtime and sdk versions
-  help          Show this help
-
-Try it now — no files, no network, no API key:
-  chatwright run example`)
+// writeVersionJSON prints exactly one JSON object to w and nothing else,
+// performing no network I/O, writes, daemon starts, update checks or
+// telemetry (cli-install#req:version-json-side-effect-free): it reads only
+// the build identity already resolved by cliBuildInfo (link-time -X values
+// or runtime/debug.ReadBuildInfo(), both pure local reads) and the running
+// binary's own recorded module dependency versions via depVersion, which is
+// the same local, side-effect-free read printVersion above already uses for
+// its runtime/sdk lines.
+func writeVersionJSON(w io.Writer) error {
+	vj := versionJSON{VersionJSON: cliBuildInfo().JSON()}
+	if v := depVersion(runtimeModulePath); v != "" {
+		vj.Runtime = v
+	}
+	if v := depVersion(sdkModulePath); v != "" {
+		vj.SDK = v
+	}
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	return enc.Encode(vj)
 }

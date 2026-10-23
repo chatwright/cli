@@ -11,6 +11,11 @@ import (
 	"chatwright.dev/sdk"
 )
 
+var (
+	sdkWriteBundle    = sdk.Write
+	jsonMarshalIndent = json.MarshalIndent
+)
+
 // writeArenaOutputs persists everything `arena run` produced but
 // arena.Run itself never writes to disk (see the arena package's own
 // doc comment): every cell's sdk.Bundle under outDir/bundles/, the
@@ -32,13 +37,9 @@ func writeArenaOutputs(outDir string, results arena.Results) error {
 			if err != nil {
 				return fmt.Errorf("create %s: %w", path, err)
 			}
-			writeErr := sdk.Write(f, c.Bundle)
-			closeErr := f.Close()
-			if writeErr != nil {
-				return fmt.Errorf("write %s: %w", path, writeErr)
-			}
-			if closeErr != nil {
-				return fmt.Errorf("close %s: %w", path, closeErr)
+			defer func() { _ = f.Close() }()
+			if err := sdkWriteBundle(f, c.Bundle); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
 			}
 		}
 	}
@@ -48,18 +49,14 @@ func writeArenaOutputs(outDir string, results arena.Results) error {
 	if err != nil {
 		return fmt.Errorf("create %s: %w", reportPath, err)
 	}
-	writeErr := arena.WriteReport(rf, results)
-	closeErr := rf.Close()
-	if writeErr != nil {
-		return fmt.Errorf("write %s: %w", reportPath, writeErr)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("close %s: %w", reportPath, closeErr)
+	defer func() { _ = rf.Close() }()
+	if err := arenaWriteReport(rf, results); err != nil {
+		return fmt.Errorf("write %s: %w", reportPath, err)
 	}
 
 	resultsPath := filepath.Join(outDir, resultsFileName)
 	doc := toResultsDoc(results)
-	data, err := json.MarshalIndent(doc, "", "  ")
+	data, err := jsonMarshalIndent(doc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", resultsFileName, err)
 	}

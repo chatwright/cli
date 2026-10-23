@@ -134,11 +134,8 @@ func TestRunHelpAliases(t *testing.T) {
 			if !strings.Contains(stdout.String(), "chatwright run DOCUMENT") {
 				t.Errorf("stdout = %q, want the command's own usage", stdout.String())
 			}
-			if !strings.Contains(stdout.String(), "chatwright run example") {
-				t.Errorf("stdout = %q, want it to mention the built-in example", stdout.String())
-			}
-			if strings.Contains(stdout.String(), "Usage of chatwright run:") {
-				t.Errorf("stdout = %q, still shows flag.FlagSet's own bare default usage", stdout.String())
+			if !strings.Contains(stdout.String(), "--write") {
+				t.Errorf("stdout = %q, want Cobra run flags", stdout.String())
 			}
 		})
 	}

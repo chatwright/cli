@@ -1,0 +1,32 @@
+{
+  "name": "chatwright-cli",
+  "version": "0.1.0",
+  "description": "Chatwright CLI skills for deterministic scenarios, arena reports, and server workflows.",
+  "author": {
+    "name": "Chatwright",
+    "url": "https://chatwright.dev"
+  },
+  "homepage": "https://chatwright.dev",
+  "repository": "https://github.com/chatwright/cli",
+  "license": "MIT",
+  "keywords": [
+    "chatwright",
+    "scenario",
+    "arena",
+    "server"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Chatwright CLI",
+    "shortDescription": "Run deterministic scenarios and inspect Chatwright artifacts.",
+    "longDescription": "Guidance for Chatwright's offline scenario journey, replayable run bundles, arena reports, and server companion.",
+    "developerName": "Chatwright",
+    "category": "Developer Tools",
+    "capabilities": ["Skills"],
+    "defaultPrompt": [
+      "Run Chatwright's offline example and inspect its bundle.",
+      "Refresh a Chatwright arena report from saved results.",
+      "Start Chatwright's server companion in the foreground."
+    ]
+  }
+}

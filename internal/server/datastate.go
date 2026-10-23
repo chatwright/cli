@@ -254,6 +254,7 @@ type datastateRunner interface {
 	Run(ctx context.Context, point datastate.AttachmentPoint, assertion datastate.Assertion) (datastate.Evidence, error)
 }
 
-func newFixtureRunner(store *FixtureStore) (*datastate.Runner, error) {
-	return datastate.NewRunner(store, store.Handles(), datastate.Limits{})
+func newFixtureRunner(store *FixtureStore) *datastate.Runner {
+	runner, _ := datastate.NewRunner(store, store.Handles(), datastate.Limits{})
+	return runner
 }

@@ -110,6 +110,11 @@ func materializeExample(dir string) (docPath string, err error) {
 	return docPath, nil
 }
 
+var (
+	osMkdirTempFunc             = os.MkdirTemp
+	materializeExampleInnerFunc = materializeExample
+)
+
 // materializeExampleTemp writes the embedded example into a fresh temporary
 // directory, invisible to the caller, and returns the document's own path
 // plus a cleanup removing that directory. This is what a plain
@@ -118,12 +123,12 @@ func materializeExample(dir string) (docPath string, err error) {
 // other document, but the user never has to create, name or clean up
 // anything themselves.
 func materializeExampleTemp() (docPath string, cleanup func(), err error) {
-	dir, err := os.MkdirTemp("", "chatwright-example-*")
+	dir, err := osMkdirTempFunc("", "chatwright-example-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("create temp dir: %w", err)
 	}
 	cleanup = func() { _ = os.RemoveAll(dir) }
-	docPath, err = materializeExample(dir)
+	docPath, err = materializeExampleInnerFunc(dir)
 	if err != nil {
 		cleanup()
 		return "", nil, err

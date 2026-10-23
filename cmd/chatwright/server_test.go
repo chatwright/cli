@@ -26,9 +26,18 @@ func TestRunServerHelp(t *testing.T) {
 		t.Fatalf("runServer(help) code = %d, want 0", code)
 	}
 	got := stdout.String()
-	for _, want := range []string{"server serve", "server start", "server stop", "server restart", "--addr", "--ui-dir", "--ui", "--ui-url", "--allow-origin"} {
+	for _, want := range []string{"serve", "start", "stop", "restart"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help output missing %q:\n%s", want, got)
+		}
+	}
+	stdout.Reset()
+	if code := runServerServe([]string{"--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("serve help code=%d", code)
+	}
+	for _, want := range []string{"--addr", "--ui-dir", "--ui", "--ui-url", "--allow-origin"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("serve help missing %q:\n%s", want, stdout.String())
 		}
 	}
 }
@@ -65,7 +74,7 @@ func TestRunServerUnknownSubcommand(t *testing.T) {
 	if code := runServer([]string{"bogus"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("runServer(bogus) code = %d, want 2", code)
 	}
-	if !strings.Contains(stderr.String(), `unknown subcommand "bogus"`) {
+	if !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Fatalf("stderr = %q, want an unknown-subcommand message", stderr.String())
 	}
 }
