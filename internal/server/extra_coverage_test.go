@@ -183,10 +183,10 @@ func TestDatastateExpectationAndStoreEdgeCases(t *testing.T) {
 	store := NewFixtureStore(map[string]map[string][]datastate.Row{
 		"h1": {"SELECT 1": {{"col": 1}}},
 	})
-	if _, err := store.Execute(context.Background(), "invalid-handle-type", datastate.Query{DTQL: "SELECT 1"}); err == nil {
+	if _, err := store.Execute(context.Background(), "invalid-handle-type", datastate.Query{TugQL: "SELECT 1"}); err == nil {
 		t.Error("store.Execute(bad handle): want error, got nil")
 	}
-	if _, err := store.Execute(context.Background(), store.Handles()["h1"], datastate.Query{DTQL: "SELECT 2"}); err == nil {
+	if _, err := store.Execute(context.Background(), store.Handles()["h1"], datastate.Query{TugQL: "SELECT 2"}); err == nil {
 		t.Error("store.Execute(missing query): want error, got nil")
 	}
 }

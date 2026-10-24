@@ -11,14 +11,14 @@
 // datastate's own combinators (NonEmpty, Empty, ExactRowCount, MinRowCount,
 // MaxRowCount, RowContains, ExactRows, and All for conjunction).
 //
-// What is stubbed: real DTQL parsing/execution against a live
+// What is stubbed: real TugQL parsing/execution against a live
 // dalgo/DataTug database. datastate.Executor is the seam DALgo's real
-// dtql/dal.DB implementation is meant to satisfy (see
+// tugql/dal.DB implementation is meant to satisfy (see
 // chatwright.dev/runtime/datastate's own package doc comment); that
 // integration does not exist yet in this CLI. FixtureStore is a
-// clearly-labeled, in-memory stand-in: it treats a Query's DTQL text as an
+// clearly-labeled, in-memory stand-in: it treats a Query's TugQL text as an
 // opaque, exact-match lookup key into rows an operator pre-loads from a
-// JSON file (see LoadFixturesFile) — it does not parse or interpret DTQL
+// JSON file (see LoadFixturesFile) — it does not parse or interpret TugQL
 // syntax at all. When no fixtures file is configured, POST /datastate/query
 // always answers verdict "unsupported": this server never claims a query
 // passed against a database it never actually reached.
@@ -42,7 +42,7 @@ type datastateQueryRequest struct {
 	// Holder names the registered database holder to query. Optional when
 	// the configured FixtureStore has exactly one holder.
 	Holder string `json:"holder,omitempty"`
-	// Query is the DTQL query text. Required.
+	// Query is the TugQL query text. Required.
 	Query string `json:"query"`
 	// Params are named query parameters, carried alongside Query and
 	// echoed back in evidence but not interpreted by FixtureStore (see
@@ -81,7 +81,7 @@ type datastateQueryResponse struct {
 	Detail string `json:"detail"`
 }
 
-const unsupportedDetail = "no datastate store is configured: real dalgo/DTQL execution against a live database is not wired in this version. Configure --datastate-fixtures/CHATWRIGHT_SERVER_DATASTATE_FIXTURES with a JSON fixture file to evaluate assertions against in-memory canned rows, or wire a real datastate.Executor (see this package's FixtureStore doc comment)."
+const unsupportedDetail = "no datastate store is configured: real dalgo/TugQL execution against a live database is not wired in this version. Configure --datastate-fixtures/CHATWRIGHT_SERVER_DATASTATE_FIXTURES with a JSON fixture file to evaluate assertions against in-memory canned rows, or wire a real datastate.Executor (see this package's FixtureStore doc comment)."
 
 func (s *Server) handleDatastateQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -116,7 +116,7 @@ func (s *Server) handleDatastateQuery(w http.ResponseWriter, r *http.Request) {
 	evidence, _ := s.runner.Run(r.Context(), datastate.AttachmentAfterMessage, datastate.Assertion{
 		Name:   "datastate-query",
 		Holder: req.Holder,
-		Query:  datastate.Query{DTQL: req.Query, Params: req.Params},
+		Query:  datastate.Query{TugQL: req.Query, Params: req.Params},
 		Expect: expectation,
 	})
 
@@ -179,11 +179,11 @@ func buildOneExpectation(spec expectationSpec) (datastate.Expectation, error) {
 // --- FixtureStore: the clearly-labeled in-memory stand-in ---
 
 // FixtureStore is an in-memory, exact-match stand-in for a real
-// datastate.Executor. It is NOT a DTQL engine — see this file's package doc
-// comment. Query.DTQL text is trimmed and used as a literal lookup key into
+// datastate.Executor. It is NOT a TugQL engine — see this file's package doc
+// comment. Query.TugQL text is trimmed and used as a literal lookup key into
 // canned rows an operator pre-loads per holder.
 type FixtureStore struct {
-	data map[string]map[string][]datastate.Row // holder -> trimmed DTQL text -> rows
+	data map[string]map[string][]datastate.Row // holder -> trimmed TugQL text -> rows
 }
 
 // NewFixtureStore builds a FixtureStore directly from in-memory data,
@@ -193,7 +193,7 @@ func NewFixtureStore(data map[string]map[string][]datastate.Row) *FixtureStore {
 }
 
 // LoadFixturesFile reads a JSON file shaped as
-// {"<holder>": {"<exact DTQL text>": [{...row...}, ...]}} into a
+// {"<holder>": {"<exact TugQL text>": [{...row...}, ...]}} into a
 // FixtureStore.
 func LoadFixturesFile(path string) (*FixtureStore, error) {
 	raw, err := os.ReadFile(path)
@@ -240,9 +240,9 @@ func (f *FixtureStore) Execute(_ context.Context, handle any, query datastate.Qu
 	if !ok {
 		return nil, fmt.Errorf("fixture store: unexpected handle type %T", handle)
 	}
-	rows, ok := byQuery[strings.TrimSpace(query.DTQL)]
+	rows, ok := byQuery[strings.TrimSpace(query.TugQL)]
 	if !ok {
-		return nil, fmt.Errorf("fixture store: no fixture recorded for query %q", query.DTQL)
+		return nil, fmt.Errorf("fixture store: no fixture recorded for query %q", query.TugQL)
 	}
 	return rows, nil
 }

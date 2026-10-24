@@ -5,7 +5,7 @@ go 1.26.1
 toolchain go1.27.0
 
 require (
-	chatwright.dev/runtime v0.5.0
+	chatwright.dev/runtime v0.10.0
 	chatwright.dev/sdk v0.3.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
@@ -18,9 +18,9 @@ require (
 	charm.land/lipgloss/v2 v2.0.5 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.59.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
-	github.com/bots-go-framework/bots-api-telegram v0.15.0 // indirect
+	github.com/bots-go-framework/bots-api-telegram v0.15.5 // indirect
 	github.com/bots-go-framework/bots-api-whatsapp v0.3.1 // indirect
-	github.com/bots-go-framework/bots-go-core v0.2.5 // indirect
+	github.com/bots-go-framework/bots-go-core v0.2.6 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260205113103-524a6607adb8 // indirect
