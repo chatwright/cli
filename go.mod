@@ -1,6 +1,8 @@
 module chatwright.dev/cli
 
-go 1.27.0
+go 1.26.1
+
+toolchain go1.27.0
 
 require (
 	chatwright.dev/runtime v0.10.0

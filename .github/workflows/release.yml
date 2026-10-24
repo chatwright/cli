@@ -40,10 +40,12 @@ jobs:
       # stop a release. datatug-cli shipped v0.13.2 that way. Names
       # the workflow's `name:`, not its filename.
       require_workflow_success: 'Go CI'
-      # Must be >= go.mod's `go` directive (currently 1.27.0). The shared
-      # release job runs its `go mod tidy` before-hook under this setup-go
-      # version with GOTOOLCHAIN=local, so leaving it unset (default '1.26')
-      # fails with "go.mod requires go >= 1.27.0" before the build starts.
+      # Must be >= go.mod's `go` directive (1.26.1) and match the
+      # toolchain directive (go1.27.0). The shared release job runs its
+      # `go mod tidy` before-hook under this setup-go version with
+      # GOTOOLCHAIN=local, which ignores the toolchain line, so leaving
+      # go_version unset (default '1.26') fails with
+      # "go.mod requires go >= 1.26.1" before the build starts.
       go_version: '1.27.0'
       # Pre-1.0 (docs/release-process.md "Version policy"): never auto-bump
       # to a new major. A tag push fixes the version anyway, so this is a
